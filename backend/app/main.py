@@ -6,8 +6,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from sqlalchemy import select
@@ -177,9 +176,23 @@ h1{{color:#0f766e}} table{{width:100%;border-collapse:collapse;margin-top:24px}}
 <p style="color:#667085;margin-top:40px">Document généré par Restor-PC RescueGrid.</p>
 </main></body></html>"""
 
+def intervention_dir(intervention: Intervention) -> Path | None:
+    if intervention.report_path:
+        return (STORAGE_DIR / intervention.report_path).resolve().parent
+    if intervention.archive_path:
+        return REPORT_DIR / Path(intervention.archive_path).stem
+    return None
+
+
+def resolve_storage_path(relative_path: str) -> Path:
+    target = (STORAGE_DIR / relative_path).resolve()
+    if not str(target).startswith(str(STORAGE_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Chemin invalide")
+    return target
+
+
 app = FastAPI(title="Restor-PC RescueGrid")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-app.mount("/storage", StaticFiles(directory=str(STORAGE_DIR)), name="storage")
 
 
 @app.on_event("startup")
@@ -280,11 +293,16 @@ def machine_detail(machine_id: int, request: Request, session: Session = Depends
 
 @app.post("/clients")
 def create_client(
+    request: Request,
     name: str = Form(...),
     email: str = Form(""),
     phone: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
     client = Client(name=name.strip(), email=email or None, phone=phone or None)
     session.add(client)
     session.commit()
@@ -293,12 +311,17 @@ def create_client(
 
 @app.post("/machines")
 def create_machine(
+    request: Request,
     bios_serial: str = Form(""),
     machine_name: str = Form(""),
     manufacturer: str = Form(""),
     model: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
     machine = Machine(
         bios_serial=bios_serial or None,
         machine_name=machine_name or None,
@@ -312,6 +335,7 @@ def create_machine(
 
 @app.post("/interventions")
 def create_intervention(
+    request: Request,
     title: str = Form(...),
     client_id: int = Form(...),
     machine_id: int = Form(0),
@@ -319,6 +343,10 @@ def create_intervention(
     status: str = Form("nouvelle"),
     session: Session = Depends(get_session),
 ):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
     intervention = Intervention(
         client_id=client_id,
         machine_id=machine_id if machine_id > 0 else None,
@@ -333,10 +361,15 @@ def create_intervention(
 
 @app.post("/upload")
 async def upload_intervention(
+    request: Request,
     client_name: str = Form(...),
     file: UploadFile = File(...),
+    upload_key: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    from .auth import verify_upload_access
+    if not verify_upload_access(request, session, upload_key or None):
+        raise HTTPException(status_code=401, detail="Authentification requise pour l'import ZIP")
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Archive ZIP requise")
 
@@ -425,7 +458,11 @@ async def upload_intervention(
 
 
 @app.post("/delete/client/{client_id}")
-def delete_client(client_id: int, session: Session = Depends(get_session)):
+def delete_client(client_id: int, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_admin_or_redirect
+    user, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
     client = session.scalars(select(Client).where(Client.id == client_id)).first()
     if client:
         session.delete(client)
@@ -434,7 +471,11 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
 
 
 @app.post("/delete/intervention/{intervention_id}")
-def delete_intervention(intervention_id: int, session: Session = Depends(get_session)):
+def delete_intervention(intervention_id: int, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_admin_or_redirect
+    user, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
     intervention = session.scalars(select(Intervention).where(Intervention.id == intervention_id)).first()
     if intervention:
         session.delete(intervention)
@@ -454,6 +495,7 @@ def parts_list(request: Request, session: Session = Depends(get_session)):
 
 @app.post("/parts")
 def create_part(
+    request: Request,
     part_type: str = Form(...),
     brand: str = Form(""),
     model: str = Form(""),
@@ -463,6 +505,10 @@ def create_part(
     notes: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
     part = Part(
         part_type=part_type,
         brand=brand or None,
@@ -478,7 +524,11 @@ def create_part(
 
 
 @app.post("/delete/part/{part_id}")
-def delete_part(part_id: int, session: Session = Depends(get_session)):
+def delete_part(part_id: int, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_admin_or_redirect
+    user, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
     part = session.scalars(select(Part).where(Part.id == part_id)).first()
     if part:
         session.delete(part)
@@ -533,6 +583,7 @@ def invoices_list(request: Request, session: Session = Depends(get_session)):
 
 @app.post("/invoices")
 def create_invoice(
+    request: Request,
     intervention_id: int = Form(...),
     amount: float = Form(...),
     tax: float = Form(0.0),
@@ -541,6 +592,10 @@ def create_invoice(
     notes: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
     intervention = session.scalars(select(Intervention).where(Intervention.id == intervention_id)).first()
     if not intervention:
         raise HTTPException(status_code=404, detail="Intervention introuvable")
@@ -565,7 +620,11 @@ def create_invoice(
 
 
 @app.post("/delete/invoice/{invoice_id}")
-def delete_invoice(invoice_id: int, session: Session = Depends(get_session)):
+def delete_invoice(invoice_id: int, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_admin_or_redirect
+    user, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
     invoice = session.scalars(select(Invoice).where(Invoice.id == invoice_id)).first()
     if invoice:
         session.delete(invoice)
@@ -586,6 +645,7 @@ def tickets_list(request: Request, session: Session = Depends(get_session)):
 
 @app.post("/tickets")
 def create_ticket(
+    request: Request,
     intervention_id: int = Form(...),
     title: str = Form(...),
     description: str = Form(""),
@@ -593,6 +653,10 @@ def create_ticket(
     status: str = Form("open"),
     session: Session = Depends(get_session),
 ):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
     intervention = session.scalars(select(Intervention).where(Intervention.id == intervention_id)).first()
     if not intervention:
         raise HTTPException(status_code=404, detail="Intervention introuvable")
@@ -611,7 +675,11 @@ def create_ticket(
 
 
 @app.post("/delete/ticket/{ticket_id}")
-def delete_ticket(ticket_id: int, session: Session = Depends(get_session)):
+def delete_ticket(ticket_id: int, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_admin_or_redirect
+    user, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
     ticket = session.scalars(select(Ticket).where(Ticket.id == ticket_id)).first()
     if ticket:
         session.delete(ticket)
@@ -620,9 +688,11 @@ def delete_ticket(ticket_id: int, session: Session = Depends(get_session)):
 
 
 @app.get("/export/interventions.xlsx")
-def export_interventions_excel(session: Session = Depends(get_session)):
-    from .auth import get_current_user
-    # Note: pour simplifier, on ne vérifie pas l'auth ici (ajouter si besoin)
+def export_interventions_excel(request: Request, session: Session = Depends(get_session)):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
     interventions = session.scalars(select(Intervention).order_by(Intervention.created_at.desc())).all()
     
     wb = Workbook()
@@ -680,7 +750,16 @@ def tools_page(request: Request, session: Session = Depends(get_session)):
 
 
 @app.post("/intervention/{intervention_id}/status")
-def update_intervention_status(intervention_id: int, status: str = Form(...), session: Session = Depends(get_session)):
+def update_intervention_status(
+    intervention_id: int,
+    request: Request,
+    status: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
     intervention = session.scalars(select(Intervention).where(Intervention.id == intervention_id)).first()
     if not intervention:
         raise HTTPException(status_code=404, detail="Intervention introuvable")
@@ -753,3 +832,63 @@ def backup_database(request: Request):
 @app.get("/health")
 def healthcheck():
     return {"status": "ok"}
+
+
+@app.get("/storage/{file_path:path}")
+def serve_storage_file(file_path: str, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
+    target = resolve_storage_path(file_path)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+    return FileResponse(target)
+
+
+@app.get("/intervention/{intervention_id}/download/zip")
+def download_intervention_zip(intervention_id: int, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
+    intervention = session.scalars(select(Intervention).where(Intervention.id == intervention_id)).first()
+    if not intervention or not intervention.archive_path:
+        raise HTTPException(status_code=404, detail="Archive ZIP introuvable")
+    target = resolve_storage_path(intervention.archive_path)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Archive ZIP introuvable")
+    return FileResponse(target, filename=target.name, media_type="application/zip")
+
+
+@app.get("/intervention/{intervention_id}/download/report")
+def download_intervention_report(intervention_id: int, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
+    intervention = session.scalars(select(Intervention).where(Intervention.id == intervention_id)).first()
+    if not intervention or not intervention.report_path:
+        raise HTTPException(status_code=404, detail="Rapport introuvable")
+    target = resolve_storage_path(intervention.report_path)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Rapport introuvable")
+    return FileResponse(target, filename=target.name, media_type="text/html")
+
+
+@app.get("/intervention/{intervention_id}/download/manifest")
+def download_intervention_manifest(intervention_id: int, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_user_or_redirect
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
+    intervention = session.scalars(select(Intervention).where(Intervention.id == intervention_id)).first()
+    if not intervention:
+        raise HTTPException(status_code=404, detail="Intervention introuvable")
+    folder = intervention_dir(intervention)
+    if not folder:
+        raise HTTPException(status_code=404, detail="Dossier intervention introuvable")
+    target = (folder / "evidence_manifest.json").resolve()
+    if not str(target).startswith(str(STORAGE_DIR.resolve())) or not target.is_file():
+        raise HTTPException(status_code=404, detail="Manifeste introuvable")
+    return FileResponse(target, filename="evidence_manifest.json", media_type="application/json")

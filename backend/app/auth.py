@@ -84,6 +84,48 @@ def authenticate_user(username: str, password: str, session: Session) -> Optiona
     return user
 
 
+def login_redirect() -> RedirectResponse:
+    return RedirectResponse("/login", status_code=303)
+
+
+def get_user_or_redirect(
+    request: Request,
+    session: Session,
+) -> tuple[Optional["User"], Optional[RedirectResponse]]:
+    user = get_current_user(request, session)
+    if not user:
+        return None, login_redirect()
+    return user, None
+
+
+def get_admin_or_redirect(
+    request: Request,
+    session: Session,
+) -> tuple[Optional["User"], Optional[RedirectResponse]]:
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return None, redirect
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Acces administrateur requis")
+    return user, None
+
+
+def verify_upload_access(
+    request: Request,
+    session: Session,
+    upload_key: str | None = None,
+) -> bool:
+    if get_current_user(request, session):
+        return True
+    expected = os.getenv("UPLOAD_API_KEY", "").strip()
+    if not expected:
+        return True
+    if upload_key and upload_key == expected:
+        return True
+    header_key = request.headers.get("X-Upload-Key", "")
+    return header_key == expected
+
+
 def create_default_admin(session: Session) -> None:
     """Creer l'admin par defaut si aucun utilisateur n'existe."""
     existing = session.scalars(select(User)).first()

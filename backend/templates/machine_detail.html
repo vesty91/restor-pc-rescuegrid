@@ -42,7 +42,11 @@
             <td>{{ item.health_score if item.health_score is not none else '-' }}</td>
             <td>{{ item.disk_risk or '-' }}</td>
             <td><span class="pill">{{ item.status }}</span></td>
-            <td>{% if item.report_path %}<a href="/storage/{{ item.report_path }}" target="_blank">ouvrir</a>{% else %}<span class="muted">-</span>{% endif %}</td>
+            <td>
+              {% if item.report_path %}<a href="/intervention/{{ item.id }}/download/report" target="_blank">Rapport</a>{% else %}<span class="muted">-</span>{% endif %}
+              {% if item.archive_path %} · <a href="/intervention/{{ item.id }}/download/zip">ZIP</a>{% endif %}
+              {% if item.report_path %} · <a href="/intervention/{{ item.id }}/download/manifest">Manifest</a>{% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

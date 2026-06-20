@@ -114,7 +114,7 @@
       {% else %}
         <div class="brand-mark">RG</div>
       {% endif %}
-      <div class="brand-title"><strong>Restor-PC RescueGrid</strong><span>Atelier v6.0</span></div>
+      <div class="brand-title"><strong>Restor-PC RescueGrid</strong><span>Atelier v9.2</span></div>
     </a>
     <form class="searchbar" action="/search" method="get">
       <input name="q" placeholder="Recherche globale : client, machine, BIOS, ticket, facture..." value="{{ search_query or '' }}">
@@ -249,7 +249,9 @@
                     </form>
                   </td>
                   <td>
-                    {% if item.report_path %}<a href="/storage/{{ item.report_path }}" target="_blank">Rapport</a>{% else %}<span class="muted">-</span>{% endif %}
+                    {% if item.report_path %}<a href="/intervention/{{ item.id }}/download/report" target="_blank">Rapport</a>{% else %}<span class="muted">-</span>{% endif %}
+                    {% if item.archive_path %} · <a href="/intervention/{{ item.id }}/download/zip">ZIP</a>{% endif %}
+                    {% if item.report_path %} · <a href="/intervention/{{ item.id }}/download/manifest">Manifest</a>{% endif %}
                     · <a href="/intervention/{{ item.id }}/label" target="_blank">Étiquette</a>
                   </td>
                   <td><form action="/delete/intervention/{{ item.id }}" method="post" onsubmit="return confirm('Supprimer cette intervention ?')"><button class="btn-sm">Suppr.</button></form></td>

@@ -15,6 +15,8 @@ param(
 
     [string]$DashboardUploadUrl,
 
+    [string]$UploadApiKey,
+
     [switch]$SkipConsent,
 
     [string]$PhotoBefore,
@@ -2200,7 +2202,11 @@ if ($DashboardUploadUrl) {
     Write-Host "[UPLOAD] Envoi vers le dashboard $DashboardUploadUrl..." -NoNewline
     if (Test-Path -LiteralPath $zipPath) {
         try {
-            $response = Invoke-RestMethod -Uri $DashboardUploadUrl -Method Post -Form @{ file = Get-Item $zipPath; client_name = $ClientName }
+            $form = @{ file = Get-Item $zipPath; client_name = $ClientName }
+            if ($UploadApiKey) { $form.upload_key = $UploadApiKey }
+            $headers = @{}
+            if ($UploadApiKey) { $headers["X-Upload-Key"] = $UploadApiKey }
+            $response = Invoke-RestMethod -Uri $DashboardUploadUrl -Method Post -Form $form -Headers $headers
             Write-Host " OK" -ForegroundColor Green
             Write-ActionLog "Upload dashboard reussi"
         }
