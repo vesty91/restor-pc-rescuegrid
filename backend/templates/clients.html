@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Clients - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}👥{% endblock %}
+{% block breadcrumb %}Clients{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Clients</h1>
+  <p>{{ clients|length }} client(s) enregistré(s) dans l'atelier.</p>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Nouveau client</h2>
+    <form action="/clients" method="post">
+      <label>Nom / Raison sociale</label>
+      <input name="name" required placeholder="Jean Dupont ou Société SARL">
+      <label>Contact (si entreprise)</label>
+      <input name="contact_name" placeholder="Nom du responsable">
+      <div class="grid2">
+        <div><label>Email</label><input type="email" name="email" placeholder="client@email.fr"></div>
+        <div><label>Téléphone</label><input name="phone" placeholder="06…"></div>
+      </div>
+      <label>Adresse</label>
+      <textarea name="address" rows="2" placeholder="Adresse complète"></textarea>
+      <button style="margin-top:14px">Ajouter le client</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Liste des clients</h2>
+    {% if clients %}
+    <table>
+      <thead><tr><th>Nom</th><th>Email</th><th>Téléphone</th><th>Interventions</th><th></th></tr></thead>
+      <tbody>
+        {% for c in clients %}
+        <tr>
+          <td><a href="/client/{{ c.id }}"><strong>{{ c.name }}</strong></a>{% if c.contact_name %}<br><span class="hint">{{ c.contact_name }}</span>{% endif %}</td>
+          <td>{{ c.email or '—' }}</td>
+          <td>{{ c.phone or '—' }}</td>
+          <td>{{ c.interventions|length }}</td>
+          <td>
+            <div class="action-menu">
+              <button class="action-menu-btn" type="button">⋯</button>
+              <div class="action-dropdown">
+                <a href="/client/{{ c.id }}">✎ Modifier</a>
+                <form action="/delete/client/{{ c.id }}" method="post" onsubmit="return confirm('Supprimer ce client ?')">
+                  <button class="drop-danger">🗑 Supprimer</button>
+                </form>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucun client enregistré.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

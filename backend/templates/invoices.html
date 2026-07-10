@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Factures - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}▥{% endblock %}
+{% block breadcrumb %}Factures{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Factures</h1>
+  <p>Création, suivi de paiement et PDF client — TVA non applicable, art. 293 B du CGI.</p>
+</div>
+
+{% if request.query_params.get('mail') %}
+<div class="notice {% if request.query_params.get('mail') == 'sent' %}success{% elif request.query_params.get('mail') == 'error' %}error{% endif %}">
+  {% if request.query_params.get('mail') == 'sent' %}✓ Email envoyé avec succès.
+  {% elif request.query_params.get('mail') == 'missing_client_email' %}⚠ Email client manquant — complète la fiche client avant l'envoi.
+  {% elif request.query_params.get('mail') == 'error' %}✗ Erreur SMTP — vérifie la configuration email dans .env.
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="grid2">
+  <div class="stack">
+    <div class="card">
+      <h2>Nouvelle facture</h2>
+      <form action="/invoices" method="post">
+        <label>Intervention</label>
+        <select name="intervention_id" required>
+          {% for i in interventions %}<option value="{{ i.id }}">#{{ i.id }} — {{ i.client.name if i.client else '?' }} — {{ i.machine_name or i.title }}</option>{% endfor %}
+        </select>
+        <label>Désignation client</label>
+        <input name="notes" value="Diagnostic atelier, contrôle système et intervention Restor-PC.">
+        <div class="grid2">
+          <div><label>Montant (€)</label><input name="amount" type="number" step="0.01" value="{% if interventions %}{{ '%.2f'|format(default_billing_amount(interventions[0])) }}{% else %}60.00{% endif %}" required></div>
+          <div><input type="hidden" name="tax" value="0"></div>
+        </div>
+        <div class="grid2">
+          <div><label>Échéance</label><input name="due_date" type="date" value="{{ today_date() if today_date else '' }}"></div>
+          <div><label>Statut</label>
+            <select name="status">
+              <option value="draft">Brouillon</option>
+              <option value="issued">Émise</option>
+              <option value="paid">Payée</option>
+              <option value="cancelled">Annulée</option>
+            </select>
+          </div>
+        </div>
+        <button style="margin-top:16px">Créer la facture</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Factures ({{ invoices|length }})</h2>
+    {% if invoices %}
+    <table>
+      <thead><tr><th>N°</th><th>Date</th><th>Client</th><th>Total</th><th>Statut</th><th></th></tr></thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <td><strong>{{ inv.invoice_number }}</strong></td>
+          <td>{{ inv.created_at.strftime('%d/%m/%Y') }}</td>
+          <td>{% if inv.client %}<a href="/client/{{ inv.client.id }}">{{ inv.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td><strong>{{ "%.2f"|format(inv.total) }} €</strong></td>
+          <td>
+            <span class="pill {{ inv.status }}">
+              {% if inv.status == 'draft' %}Brouillon{% elif inv.status == 'issued' %}Émise{% elif inv.status == 'paid' %}Payée{% elif inv.status == 'cancelled' %}Annulée{% else %}{{ inv.status }}{% endif %}
+            </span>
+            {% if inv.payment_method %}<span class="hint"> · {{ inv.payment_method }}</span>{% endif %}
+          </td>
+          <td>
+            <div class="action-menu">
+              <button class="action-menu-btn" type="button">⋯</button>
+              <div class="action-dropdown">
+                <a href="/invoice/{{ inv.id }}/pdf" target="_blank">▤ Voir PDF</a>
+                <form action="/invoice/{{ inv.id }}/send-email" method="post"><button>✉ Envoyer email</button></form>
+                {% if inv.status != 'issued' %}
+                <form action="/invoice/{{ inv.id }}/status" method="post">
+                  <input type="hidden" name="status" value="issued">
+                  <button>→ Émettre</button>
+                </form>
+                {% endif %}
+                {% if inv.status != 'paid' %}
+                <form action="/invoice/{{ inv.id }}/status" method="post">
+                  <input type="hidden" name="status" value="paid">
+                  <input type="hidden" name="payment_method" value="cash">
+                  <button>✓ Marquer payée</button>
+                </form>
+                {% endif %}
+                {% if inv.status != 'cancelled' %}
+                <form action="/invoice/{{ inv.id }}/status" method="post">
+                  <input type="hidden" name="status" value="cancelled">
+                  <button>✕ Annuler</button>
+                </form>
+                {% endif %}
+                <form action="/delete/invoice/{{ inv.id }}" method="post" onsubmit="return confirm('Supprimer définitivement ?')">
+                  <button class="drop-danger">🗑 Supprimer</button>
+                </form>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucune facture pour le moment.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block extra_head %}<script>const active_page_hint='invoices'</script>{% endblock %}

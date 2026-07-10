@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+backend/.env
+
+# Local data
+*.db
+backend/*.db
+backend/storage/
+storage/
+*.log
+.pytest_cache/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Archives
+*.zip
+
+# Artefacts d'intervention générés par l'agent (tests locaux, imports manuels)
+/Intervention_*/
+/Intervention_*.zip

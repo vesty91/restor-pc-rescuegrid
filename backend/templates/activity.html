@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Journal d'activité - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}▤{% endblock %}
+{% block breadcrumb %}Journal système{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Journal d'activité</h1>
+  <p>Historique de toutes les actions effectuées dans RescueGrid.</p>
+</div>
+
+<div class="card">
+  {% if logs %}
+  <table>
+    <thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Détail</th></tr></thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td style="white-space:nowrap">{{ log.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+        <td>{{ log.username or '—' }}</td>
+        <td><code>{{ log.action }}</code></td>
+        <td class="muted">{{ log.detail or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Aucune activité enregistrée.</div>
+  {% endif %}
+</div>
+{% endblock %}

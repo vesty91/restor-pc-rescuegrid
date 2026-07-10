@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Inventaire atelier - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}⚙{% endblock %}
+{% block breadcrumb %}Pièces détachées{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Inventaire atelier</h1>
+  <p>SSD, HDD, RAM, CPU, GPU — suivi du stock de pièces détachées.</p>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Ajouter une pièce</h2>
+    <form method="post">
+      <label>Type</label>
+      <select name="part_type" required>
+        <option value="ssd">SSD</option>
+        <option value="hdd">HDD</option>
+        <option value="ram">RAM</option>
+        <option value="cpu">CPU</option>
+        <option value="gpu">GPU</option>
+        <option value="autre">Autre</option>
+      </select>
+      <div class="grid2">
+        <div><label>Marque</label><input name="brand" placeholder="Samsung, Seagate…"></div>
+        <div><label>Modèle</label><input name="model" placeholder="870 EVO, Barracuda…"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Capacité (Go)</label><input name="capacity_gb" type="number" placeholder="500"></div>
+        <div><label>Quantité</label><input name="quantity" type="number" value="1" min="1"></div>
+      </div>
+      <label>N° de série</label>
+      <input name="serial_number" placeholder="Optionnel">
+      <label>Notes</label>
+      <input name="notes" placeholder="Optionnel">
+      <button style="margin-top:16px">Ajouter au stock</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Stock ({{ parts|length }} références)</h2>
+    {% if parts %}
+    <table>
+      <thead><tr><th>Type</th><th>Marque / Modèle</th><th>Capacité</th><th>Stock</th><th></th></tr></thead>
+      <tbody>
+        {% for p in parts %}
+        <tr>
+          <td><span class="pill">{{ p.part_type|upper }}</span></td>
+          <td><strong>{{ p.brand or '—' }}</strong> {{ p.model or '' }}</td>
+          <td>{{ p.capacity_gb ~ ' Go' if p.capacity_gb else '—' }}</td>
+          <td>
+            {% if p.quantity == 0 %}<span class="text-danger">Rupture</span>
+            {% elif p.quantity <= 2 %}<span class="text-warning">{{ p.quantity }}</span>
+            {% else %}<strong>{{ p.quantity }}</strong>{% endif %}
+          </td>
+          <td>
+            <form action="/delete/part/{{ p.id }}" method="post" onsubmit="return confirm('Supprimer cette pièce ?')">
+              <button class="btn-sm">✕</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucune pièce en stock.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

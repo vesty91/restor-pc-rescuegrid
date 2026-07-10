@@ -1,0 +1,13 @@
+services:
+  dashboard:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:///./rescuegrid.db
+      SECRET_KEY: change-me-in-production-2026
+      ADMIN_PASSWORD: rescuegrid2026
+    volumes:
+      - ./backend/storage:/app/storage
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion - Restor-PC RescueGrid</title>
+  <style>
+    :root{color-scheme:dark;--bg:#040b14;--card:#0d1b2f;--line:#1b3656;--text:#eef7ff;--muted:#93a9c5;--blue:#0a84ff;--blue2:#00a3ff;--danger:#ef4444;}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:Segoe UI,Inter,Arial,sans-serif;color:var(--text);min-height:100vh;
+      display:flex;align-items:center;justify-content:center;
+      background:
+        radial-gradient(circle at 20% 10%,rgba(10,132,255,.18),transparent 35%),
+        radial-gradient(circle at 80% 80%,rgba(0,163,255,.10),transparent 35%),
+        linear-gradient(135deg,#020812 0%,#06101d 50%,#02050b 100%);
+    }
+    .login-wrap{width:min(380px,94vw)}
+    .logo-area{text-align:center;margin-bottom:28px}
+    .logo-area img{max-width:180px;max-height:80px;object-fit:contain}
+    .logo-fallback{font-size:26px;font-weight:1000;color:var(--blue2);letter-spacing:-.03em}
+    .logo-sub{color:var(--muted);font-size:13px;margin-top:6px}
+    .card{
+      background:linear-gradient(180deg,rgba(13,27,47,.96),rgba(7,19,33,.98));
+      border:1px solid var(--line);border-radius:18px;padding:28px 26px;
+      box-shadow:0 22px 60px rgba(0,0,0,.5);
+    }
+    .card h2{font-size:18px;margin-bottom:4px;color:var(--text)}
+    .card .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+    label{display:block;margin-top:14px;margin-bottom:5px;color:#a8bdd8;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+    input{
+      width:100%;background:#081426;border:1px solid var(--line);color:var(--text);
+      border-radius:11px;padding:11px 13px;font:inherit;font-size:14px;outline:none;
+    }
+    input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.18)}
+    button{
+      margin-top:20px;width:100%;border:0;
+      background:linear-gradient(135deg,#0875ff,#005bd9);
+      color:#fff;font:inherit;font-weight:800;font-size:15px;
+      padding:12px;border-radius:12px;cursor:pointer;
+      box-shadow:0 10px 26px rgba(10,132,255,.22);transition:opacity .15s;
+    }
+    button:hover{opacity:.88}
+    .error{background:rgba(239,68,68,.12);color:var(--danger);border:1px solid rgba(239,68,68,.22);
+      padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:13px}
+    .hint{margin-top:16px;font-size:12px;color:var(--muted);text-align:center;border-top:1px solid rgba(255,255,255,.07);padding-top:14px}
+    .hint code{background:#040b14;padding:2px 6px;border-radius:5px;color:#9bd2ff}
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="logo-area">
+      <div class="logo-fallback">RESTOR-PC</div>
+      <div class="logo-sub">RescueGrid v12.1 — Atelier informatique</div>
+    </div>
+    <div class="card">
+      <h2>Connexion</h2>
+      <div class="sub">Accès technicien / administrateur</div>
+      {% if error %}
+      <div class="error">{{ error }}</div>
+      {% endif %}
+      <form method="post">
+        <label>Identifiant</label>
+        <input name="username" required autofocus autocomplete="username">
+        <label>Mot de passe</label>
+        <input name="password" type="password" required autocomplete="current-password">
+        <button>Se connecter</button>
+      </form>
+      <div class="hint">Par défaut : <code>admin</code> / <code>rescuegrid2026</code><br>Changez le mot de passe dans les paramètres.</div>
+    </div>
+  </div>
+</body>
+</html>

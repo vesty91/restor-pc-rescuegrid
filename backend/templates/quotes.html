@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Devis - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}▤{% endblock %}
+{% block breadcrumb %}Devis{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Devis</h1>
+  <p>Création, impression PDF et conversion en facture — TVA non applicable, art. 293 B du CGI.</p>
+</div>
+
+{% if request.query_params.get('mail') %}
+<div class="notice {% if request.query_params.get('mail') == 'sent' %}success{% elif request.query_params.get('mail') == 'error' %}error{% endif %}">
+  {% if request.query_params.get('mail') == 'sent' %}✓ Email envoyé avec succès.
+  {% elif request.query_params.get('mail') == 'missing_client_email' %}⚠ Email client manquant — complète la fiche client avant l'envoi.
+  {% elif request.query_params.get('mail') == 'error' %}✗ Erreur SMTP — vérifie la configuration email dans .env.
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="grid2">
+  <div class="card">
+    <h2>Nouveau devis</h2>
+    <form action="/quotes" method="post">
+      <label>Intervention</label>
+      <select name="intervention_id" required>
+        {% for i in interventions %}
+        <option value="{{ i.id }}">#{{ i.id }} — {{ i.client.name if i.client else '?' }} — {{ i.machine_name or i.title }}</option>
+        {% endfor %}
+      </select>
+      <label>Description client</label>
+      <textarea name="description" rows="3">Diagnostic atelier, contrôle SMART, analyse Windows et rapport d'intervention Restor-PC.</textarea>
+      <div class="grid2">
+        <div><label>Montant (€)</label><input name="amount" type="number" step="0.01" value="{% if interventions %}{{ '%.2f'|format(default_billing_amount(interventions[0])) }}{% else %}60.00{% endif %}" required></div>
+        <div><input type="hidden" name="tax" value="0"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Validité jusqu'au</label><input name="valid_until" type="date" value="{{ default_due_date(30) if default_due_date else '' }}"></div>
+        <div><label>Statut</label>
+          <select name="status">
+            <option value="draft">Brouillon</option>
+            <option value="sent">Envoyé</option>
+            <option value="accepted">Accepté</option>
+            <option value="cancelled">Refusé</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:10px">TVA non applicable, article 293 B du CGI.</p>
+      <button style="margin-top:14px">Créer le devis</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Devis existants ({{ quotes|length }})</h2>
+    {% if quotes %}
+    <table>
+      <thead><tr><th>N°</th><th>Date</th><th>Client</th><th>Total</th><th>Statut</th><th></th></tr></thead>
+      <tbody>
+        {% for q in quotes %}
+        <tr>
+          <td><strong>{{ q.quote_number }}</strong></td>
+          <td>{{ q.created_at.strftime('%d/%m/%Y') }}</td>
+          <td>{% if q.client %}<a href="/client/{{ q.client.id }}">{{ q.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td><strong>{{ "%.2f"|format(q.total) }} €</strong></td>
+          <td>
+            <span class="pill {{ q.status }}">
+              {% if q.status == 'draft' %}Brouillon{% elif q.status == 'sent' %}Envoyé{% elif q.status == 'accepted' %}Accepté{% elif q.status == 'cancelled' %}Refusé{% else %}{{ q.status }}{% endif %}
+            </span>
+          </td>
+          <td>
+            <div class="action-menu">
+              <button class="action-menu-btn" type="button">⋯</button>
+              <div class="action-dropdown">
+                <a href="/quote/{{ q.id }}/pdf" target="_blank">▤ Voir PDF</a>
+                <form action="/quote/{{ q.id }}/send-email" method="post"><button>✉ Envoyer email</button></form>
+                <form action="/quote/{{ q.id }}/convert" method="post"><button>→ Convertir en facture</button></form>
+                <form action="/delete/quote/{{ q.id }}" method="post" onsubmit="return confirm('Supprimer ce devis ?')">
+                  <button class="drop-danger">🗑 Supprimer</button>
+                </form>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucun devis pour le moment.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

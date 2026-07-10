@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Restor-PC RescueGrid{% endblock %}</title>
+  <style>
+    :root{
+      color-scheme:dark;
+      --bg:#040b14;
+      --panel:#071321;
+      --panel2:#0b1728;
+      --card:#0d1b2f;
+      --card2:#0a1626;
+      --line:#1b3656;
+      --line2:#123764;
+      --text:#eef7ff;
+      --muted:#93a9c5;
+      --blue:#0a84ff;
+      --blue2:#00a3ff;
+      --cyan:#13d5ff;
+      --success:#5df2a3;
+      --warning:#ffb020;
+      --danger:#ef4444;
+      --shadow:0 22px 60px rgba(0,0,0,.45);
+      --glow:0 0 30px rgba(10,132,255,.22);
+      --radius:14px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:Segoe UI,Inter,Arial,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at 18% 0%,rgba(10,132,255,.14),transparent 28%),
+        radial-gradient(circle at 80% 10%,rgba(0,163,255,.08),transparent 32%),
+        linear-gradient(135deg,#020812 0%,#06101d 44%,#02050b 100%);
+      min-height:100vh;
+    }
+    a{color:var(--blue2);text-decoration:none;font-weight:700}
+    a:hover{text-decoration:underline}
+
+    /* ── Layout ── */
+    .app{display:grid;grid-template-columns:270px minmax(0,1fr);min-height:100vh}
+
+    /* ── Sidebar ── */
+    .sidebar{
+      position:sticky;top:0;height:100vh;
+      padding:20px 14px;
+      border-right:1px solid var(--line);
+      background:linear-gradient(180deg,rgba(7,19,33,.97),rgba(3,10,18,.99));
+      display:flex;flex-direction:column;gap:14px;
+      overflow-y:auto;
+    }
+    .logoBox{padding:4px 6px 14px;border-bottom:1px solid rgba(255,255,255,.07);text-align:center}
+    .logoBox img{width:200px;max-height:110px;object-fit:contain;display:block;margin:auto}
+    .logoFallback{font-size:22px;font-weight:1000;color:var(--blue2)}
+
+    .nav{display:grid;gap:4px}
+    .nav a{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      color:#dceeff;font-weight:700;padding:10px 12px;border-radius:12px;
+      border:1px solid transparent;font-size:13.5px;
+    }
+    .nav a:hover,.nav a.active{
+      background:linear-gradient(135deg,#0a84ff,#075bd1);
+      text-decoration:none;
+      box-shadow:var(--glow);
+      color:#fff;
+    }
+    .nav-left{display:flex;align-items:center;gap:10px}
+    .ico{
+      width:22px;height:22px;display:grid;place-items:center;color:var(--blue2);
+      border:1px solid rgba(10,132,255,.25);border-radius:7px;
+      background:rgba(10,132,255,.07);font-size:12px;flex-shrink:0;
+    }
+    .nav a.active .ico,.nav a:hover .ico{color:#fff;border-color:rgba(255,255,255,.3)}
+    .nav-badge{min-width:22px;height:22px;border-radius:7px;background:#0d5cae;color:#fff;
+      display:grid;place-items:center;font-size:11px;font-weight:900;flex-shrink:0}
+
+    .nav-section{color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.06em;
+      text-transform:uppercase;padding:8px 12px 2px}
+
+    .sidebar-footer{margin-top:auto;border-top:1px solid rgba(255,255,255,.07);
+      padding-top:12px;color:var(--muted);font-size:11px;text-align:center;line-height:1.7}
+    .online{color:var(--success);font-weight:800}
+
+    /* ── Main content ── */
+    .main-content{display:flex;flex-direction:column;min-height:100vh}
+    .topbar{
+      height:58px;display:flex;align-items:center;justify-content:space-between;
+      padding:0 28px;border-bottom:1px solid var(--line);
+      background:linear-gradient(180deg,rgba(7,19,33,.95),rgba(4,12,22,.92));
+      position:sticky;top:0;z-index:10;gap:16px;
+    }
+    .topbar-left{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:800}
+    .topbar-search{flex:1;max-width:500px}
+    .topbar-search form{display:flex;gap:8px}
+    .topbar-search input{
+      flex:1;background:#071322;border:1px solid var(--line);color:var(--text);
+      border-radius:10px;padding:8px 12px;font:inherit;font-size:13px;outline:none;
+    }
+    .topbar-search input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
+    .topbar-right{display:flex;align-items:center;gap:12px;font-size:13px}
+    .user-chip{display:flex;align-items:center;gap:8px}
+    .user-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0a84ff,#005bd9);
+      display:grid;place-items:center;font-size:12px;font-weight:900;color:#fff;flex-shrink:0}
+
+    .page-body{padding:24px 28px 40px;flex:1}
+
+    /* ── Cards & sections ── */
+    .card,.panel,section.card{
+      background:linear-gradient(180deg,rgba(13,27,47,.94),rgba(7,19,33,.96));
+      border:1px solid var(--line);border-radius:var(--radius);
+      padding:20px 22px;box-shadow:var(--shadow);
+    }
+    .stack{display:grid;gap:16px}
+    h1{font-size:clamp(20px,2.5vw,30px);letter-spacing:-.03em;color:var(--text)}
+    h2{font-size:clamp(16px,2vw,22px);letter-spacing:-.02em;color:var(--text);margin-bottom:14px}
+    h3{font-size:15px;color:var(--text);margin-bottom:10px}
+
+    /* ── Page header block ── */
+    .page-header{margin-bottom:20px}
+    .page-header h1{margin-bottom:4px}
+    .page-header p{color:var(--muted);font-size:13px}
+
+    /* ── Tables ── */
+    table{width:100%;border-collapse:collapse}
+    th,td{text-align:left;padding:11px 12px;border-bottom:1px solid rgba(147,169,197,.13);vertical-align:middle}
+    th{color:#a8bdd8;text-transform:uppercase;font-size:11px;letter-spacing:.06em;background:rgba(8,20,36,.55)}
+    td{font-size:14px;color:var(--text)}
+    tr:last-child td{border-bottom:0}
+
+    /* ── Forms ── */
+    label{display:block;margin-top:12px;margin-bottom:5px;color:#a8bdd8;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+    input,select,textarea{
+      width:100%;font:inherit;border:1px solid var(--line);background:#081426;
+      color:var(--text);border-radius:11px;padding:10px 12px;outline:none;font-size:14px;
+    }
+    textarea{min-height:80px;resize:vertical}
+    input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.16)}
+    input[type="file"]{background:transparent;border:1px dashed var(--line);padding:8px}
+
+    /* ── Buttons ── */
+    button,.btn{
+      display:inline-flex;align-items:center;justify-content:center;gap:7px;
+      border:0;border-radius:11px;
+      background:linear-gradient(135deg,#0875ff,#005bd9);
+      color:#fff;font:inherit;font-weight:800;font-size:14px;
+      padding:10px 16px;cursor:pointer;
+      box-shadow:0 8px 22px rgba(10,132,255,.18);
+      transition:opacity .15s;
+    }
+    button:hover,.btn:hover{opacity:.88}
+    .btn-secondary{background:linear-gradient(135deg,#1e3a5f,#0e2037);box-shadow:none}
+    .btn-danger{background:linear-gradient(135deg,#b91c1c,#991b1b);box-shadow:none}
+    .btn-sm{display:inline-flex;align-items:center;justify-content:center;
+      border:0;border-radius:8px;padding:5px 9px;font:inherit;font-size:12px;
+      font-weight:800;cursor:pointer;color:#fff;background:var(--danger);width:auto}
+    .btn-sm.secondary{background:#1e3a5f}
+
+    /* ── Actions inline dans les tableaux ── */
+    .actions-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .actions-cell form{margin:0}
+    .actions-cell button,.actions-cell .btn{padding:5px 10px;font-size:12px;border-radius:8px;box-shadow:none}
+    .action-menu{position:relative;display:inline-block}
+    .action-menu-btn{background:#0d1b2f;border:1px solid var(--line);border-radius:8px;
+      color:var(--text);padding:5px 10px;font-size:16px;cursor:pointer;font-weight:900;box-shadow:none}
+    .action-menu-btn:hover{border-color:var(--blue)}
+    .action-dropdown{
+      display:none;position:absolute;right:0;top:calc(100% + 4px);
+      background:#0d1b2f;border:1px solid var(--line);border-radius:12px;
+      min-width:180px;z-index:100;box-shadow:var(--shadow);overflow:hidden;
+    }
+    .action-dropdown.open{display:block}
+    .action-dropdown a,.action-dropdown button{
+      display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+      padding:10px 14px;border-radius:0;background:transparent;color:var(--text);
+      font-size:13px;font-weight:600;box-shadow:none;border:0;border-bottom:1px solid rgba(147,169,197,.1);
+    }
+    .action-dropdown a:last-child,.action-dropdown button:last-child{border-bottom:0}
+    .action-dropdown a:hover,.action-dropdown button:hover{background:rgba(10,132,255,.1);text-decoration:none;color:#fff}
+    .action-dropdown .drop-danger{color:var(--danger)}
+    .action-dropdown .drop-danger:hover{background:rgba(239,68,68,.12)}
+
+    /* ── Pills / badges ── */
+    .pill,.status-pill{
+      display:inline-flex;align-items:center;gap:5px;border-radius:999px;
+      padding:4px 10px;font-weight:800;font-size:11px;
+      background:rgba(10,132,255,.15);color:#9bd2ff;border:1px solid rgba(10,132,255,.22);
+    }
+    .pill.paid,.pill.ok,.pill.healthy{background:rgba(93,242,163,.12);color:var(--success);border-color:rgba(93,242,163,.25)}
+    .pill.draft,.pill.warn,.pill.brouillon{background:rgba(255,176,32,.1);color:var(--warning);border-color:rgba(255,176,32,.2)}
+    .pill.issued,.pill.sent,.pill.envoyé{background:rgba(19,213,255,.1);color:var(--cyan);border-color:rgba(19,213,255,.2)}
+    .pill.cancelled,.pill.refused,.pill.err{background:rgba(239,68,68,.1);color:var(--danger);border-color:rgba(239,68,68,.2)}
+    .pill.accepted,.pill.resolved{background:rgba(93,242,163,.12);color:var(--success);border-color:rgba(93,242,163,.25)}
+    .pill.open,.pill.in_progress{background:rgba(255,176,32,.1);color:var(--warning);border-color:rgba(255,176,32,.2)}
+
+    /* ── KPI grid ── */
+    .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:18px}
+    .kpi{min-height:90px;border:1px solid var(--line);border-radius:14px;padding:16px;
+      background:linear-gradient(180deg,#0d1b2f,#09182a)}
+    .kpi span{display:block;color:#a8bdd8;text-transform:uppercase;font-size:11px;font-weight:800;letter-spacing:.06em}
+    .kpi strong{display:block;margin-top:6px;font-size:26px;color:#fff}
+
+    /* ── Grids ── */
+    .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+
+    /* ── Notices / alerts ── */
+    .notice,.alert{border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13px}
+    .notice.success,.alert-success{background:rgba(93,242,163,.1);color:var(--success);border:1px solid rgba(93,242,163,.2)}
+    .notice.error,.alert-danger{background:rgba(239,68,68,.1);color:var(--danger);border:1px solid rgba(239,68,68,.2)}
+    .notice,.notice.info{background:rgba(10,132,255,.1);color:#9bd2ff;border:1px solid rgba(10,132,255,.2)}
+
+    /* ── Empty state ── */
+    .empty{border:1px dashed var(--line);border-radius:14px;padding:28px;text-align:center;color:var(--muted)}
+
+    /* ── Misc ── */
+    .muted{color:var(--muted)}
+    .hint{color:var(--muted);font-size:12px}
+    .text-success{color:var(--success)}
+    .text-danger{color:var(--danger)}
+    .text-warning{color:var(--warning)}
+    pre{background:#040b14;border:1px solid var(--line);border-radius:10px;padding:14px;
+      font-size:12px;overflow-x:auto;color:#a8d4ff;white-space:pre-wrap}
+    code{background:#081426;padding:2px 6px;border-radius:5px;font-size:12px;color:var(--cyan)}
+    hr{border:0;border-top:1px solid var(--line);margin:20px 0}
+    .full-width{grid-column:1/-1}
+
+    /* ── Responsive ── */
+    @media(max-width:1100px){
+      .app{grid-template-columns:1fr}
+      .sidebar{position:relative;height:auto;flex-direction:row;flex-wrap:wrap;gap:8px;padding:12px}
+      .logoBox{display:none}
+      .sidebar-footer{display:none}
+      .nav{flex-direction:row;flex-wrap:wrap;gap:4px;display:flex}
+      .nav-section{display:none}
+      .nav a{padding:7px 10px;font-size:12px}
+    }
+    @media(max-width:760px){
+      .page-body{padding:16px}
+      .grid2,.grid3,.grid4{grid-template-columns:1fr}
+      .topbar{padding:0 14px}
+      .topbar-search{display:none}
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="logoBox">
+      {% if logo_path is defined and logo_path %}
+        {% if logo_path.startswith('/static/') %}
+          <img src="{{ logo_path }}" alt="Restor-PC">
+        {% else %}
+          <img src="/storage/{{ logo_path }}" alt="Restor-PC">
+        {% endif %}
+      {% else %}
+        <div class="logoFallback">RESTOR-PC</div>
+      {% endif %}
+    </div>
+
+    <nav class="nav">
+      <div class="nav-section">Principal</div>
+      <a href="/" class="{{ 'active' if active_page == 'dashboard' else '' }}">
+        <span class="nav-left"><span class="ico">⌂</span>Tableau de bord</span>
+      </a>
+      <a href="/interventions" class="{{ 'active' if active_page == 'interventions' else '' }}">
+        <span class="nav-left"><span class="ico">⬡</span>Interventions</span>
+      </a>
+      <a href="/clients" class="{{ 'active' if active_page == 'clients' else '' }}">
+        <span class="nav-left"><span class="ico">👥</span>Clients</span>
+      </a>
+      <a href="/machines" class="{{ 'active' if active_page == 'machines' else '' }}">
+        <span class="nav-left"><span class="ico">▣</span>Machines</span>
+      </a>
+
+      <div class="nav-section">Gestion</div>
+      <a href="/tickets" class="{{ 'active' if active_page == 'tickets' else '' }}">
+        <span class="nav-left"><span class="ico">◻</span>Tickets</span>
+      </a>
+      <a href="/quotes" class="{{ 'active' if active_page == 'quotes' else '' }}">
+        <span class="nav-left"><span class="ico">▤</span>Devis</span>
+      </a>
+      <a href="/invoices" class="{{ 'active' if active_page == 'invoices' else '' }}">
+        <span class="nav-left"><span class="ico">▥</span>Factures</span>
+      </a>
+      <a href="/parts" class="{{ 'active' if active_page == 'parts' else '' }}">
+        <span class="nav-left"><span class="ico">⚙</span>Pièces détachées</span>
+      </a>
+
+      <div class="nav-section">Outils</div>
+      <a href="/tools" class="{{ 'active' if active_page == 'tools' else '' }}">
+        <span class="nav-left"><span class="ico">◈</span>USB / PXE</span>
+      </a>
+      <a href="/settings" class="{{ 'active' if active_page == 'settings' else '' }}">
+        <span class="nav-left"><span class="ico">⚙</span>Paramètres</span>
+      </a>
+      {% if user is defined and user and user.role == 'admin' %}
+      <a href="/activity" class="{{ 'active' if active_page == 'activity' else '' }}">
+        <span class="nav-left"><span class="ico">▤</span>Journal système</span>
+      </a>
+      <a href="/users" class="{{ 'active' if active_page == 'users' else '' }}">
+        <span class="nav-left"><span class="ico">👤</span>Utilisateurs</span>
+      </a>
+      {% endif %}
+    </nav>
+
+    <div class="sidebar-footer">
+      © 2026 <strong>RESTOR-PC</strong><br>
+      RescueGrid v12.1<br>
+      <span class="online">● En ligne</span><br><br>
+      <a href="/logout" style="color:var(--muted);font-size:11px">Déconnexion</a>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="ico">{% block page_icon %}◻{% endblock %}</span>
+        {% block breadcrumb %}Restor-PC RescueGrid{% endblock %}
+      </div>
+      <div class="topbar-search">
+        <form action="/search" method="get">
+          <input name="q" placeholder="Rechercher client, machine, facture…" value="{{ search_query if search_query is defined else '' }}">
+        </form>
+      </div>
+      <div class="topbar-right">
+        {% if user is defined and user %}
+        <div class="user-chip">
+          <div class="user-avatar">{{ user.username[0]|upper }}</div>
+          <span class="muted" style="font-size:12px">{{ user.role|capitalize }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="page-body">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.action-menu-btn').forEach(btn => {
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      const menu = this.nextElementSibling;
+      document.querySelectorAll('.action-dropdown.open').forEach(m => { if(m !== menu) m.classList.remove('open'); });
+      menu.classList.toggle('open');
+    });
+  });
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.action-dropdown.open').forEach(m => m.classList.remove('open'));
+  });
+</script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

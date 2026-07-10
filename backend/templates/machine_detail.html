@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ machine.machine_name or 'Machine #' ~ machine.id }} - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}▣{% endblock %}
+{% block breadcrumb %}<a href="/machines">Machines</a> › {{ machine.machine_name or 'Machine #' ~ machine.id }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ machine.machine_name or 'Machine #' ~ machine.id }}</h1>
+  <p>{{ machine.manufacturer or '' }}{% if machine.model %} · {{ machine.model }}{% endif %}{% if machine.bios_serial %} · BIOS : {{ machine.bios_serial }}{% endif %} · Première intervention : {{ machine.created_at.strftime('%d/%m/%Y') }}{% if machine.last_intervention %} · Dernière : {{ machine.last_intervention.strftime('%d/%m/%Y') }}{% endif %}</p>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi"><span>Interventions</span><strong>{{ interventions|length }}</strong></div>
+  <div class="kpi"><span>Meilleur score</span><strong>{{ best_score if best_score is defined and best_score else (interventions[0].health_score if interventions and interventions[0].health_score is not none else '—') }}<span style="font-size:14px;color:var(--muted)">/100</span></strong></div>
+  <div class="kpi"><span>Dernier score</span><strong>{{ interventions[0].health_score if interventions and interventions[0].health_score is not none else '—' }}<span style="font-size:14px;color:var(--muted)">/100</span></strong></div>
+  <div class="kpi"><span>Statut disque</span><strong style="font-size:16px">{{ interventions[0].disk_risk if interventions and interventions[0].disk_risk else '—' }}</strong></div>
+  <div class="kpi"><span>CPU</span><strong style="font-size:15px">{{ hardware.cpu or '—' }}</strong></div>
+  <div class="kpi"><span>RAM</span><strong>{{ hardware.ram or '—' }}</strong></div>
+  <div class="kpi"><span>GPU</span><strong style="font-size:15px">{{ hardware.gpu or '—' }}</strong></div>
+  <div class="kpi"><span>Stockage</span><strong>{{ hardware.storage or '—' }}</strong></div>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Identité machine</h2>
+    <table>
+      <tr><th>Nom</th><td>{{ machine.machine_name or '—' }}</td></tr>
+      <tr><th>Fabricant</th><td>{{ machine.manufacturer or '—' }}</td></tr>
+      <tr><th>Modèle</th><td>{{ machine.model or '—' }}</td></tr>
+      <tr><th>Serial BIOS</th><td><code>{{ machine.bios_serial or '—' }}</code></td></tr>
+      <tr><th>Windows</th><td>{{ hardware.windows or '—' }}</td></tr>
+      <tr><th>CPU</th><td>{{ hardware.cpu or '—' }}</td></tr>
+      <tr><th>RAM</th><td>{{ hardware.ram or '—' }}</td></tr>
+      <tr><th>GPU</th><td>{{ hardware.gpu or '—' }}</td></tr>
+      <tr><th>Stockage total</th><td>{{ hardware.storage or '—' }}</td></tr>
+    </table>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <h2>Chronologie atelier</h2>
+      {% if interventions %}
+      <div style="display:grid;gap:12px">
+        {% for item in interventions %}
+        <div style="border-left:3px solid var(--blue);padding-left:14px">
+          <strong>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</strong><br>
+          <span>{{ item.title }}</span><br>
+          <span class="muted" style="font-size:12px">Score {{ item.health_score if item.health_score is not none else '—' }}/100 · Disque {{ item.disk_risk or '—' }}</span><br>
+          <a href="/intervention/{{ item.id }}">Ouvrir le dossier →</a>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">Aucune intervention liée.</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Historique interventions</h2>
+      {% if interventions %}
+      <table>
+        <thead><tr><th>Date</th><th>Client</th><th>Score</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for item in interventions %}
+          <tr>
+            <td>{{ item.created_at.strftime('%d/%m/%Y') }}</td>
+            <td>{% if item.client %}<a href="/client/{{ item.client_id }}">{{ item.client.name }}</a>{% else %}—{% endif %}</td>
+            <td>{{ item.health_score if item.health_score is not none else '—' }}</td>
+            <td class="actions-cell">
+              <a href="/intervention/{{ item.id }}" class="btn btn-secondary btn-sm">Dossier</a>
+              {% if item.report_path %}<a href="/intervention/{{ item.id }}/download/report" target="_blank" class="btn btn-secondary btn-sm">Rapport</a>{% endif %}
+              {% if item.archive_path %}<a href="/intervention/{{ item.id }}/download/zip" class="btn btn-secondary btn-sm">ZIP</a>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">Aucun historique.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

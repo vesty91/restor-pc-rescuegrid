@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Restor-PC RescueGrid</title>
+  <style>
+    :root{
+      color-scheme:dark;
+      --bg:#040b14;
+      --panel:#071321;
+      --panel2:#0b1728;
+      --card:#0d1b2f;
+      --card2:#0a1626;
+      --line:#1b3656;
+      --line2:#123764;
+      --text:#eef7ff;
+      --muted:#93a9c5;
+      --blue:#0a84ff;
+      --blue2:#00a3ff;
+      --cyan:#13d5ff;
+      --success:#5df2a3;
+      --warning:#ffb020;
+      --danger:#ef4444;
+      --shadow:0 22px 60px rgba(0,0,0,.45);
+      --glow:0 0 30px rgba(10,132,255,.22);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Segoe UI, Inter, Arial, sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at 18% 0%, rgba(10,132,255,.16), transparent 28%),
+        radial-gradient(circle at 80% 10%, rgba(0,163,255,.10), transparent 32%),
+        linear-gradient(135deg,#020812 0%,#06101d 44%,#02050b 100%);
+      min-height:100vh;
+    }
+    a{color:var(--blue2);text-decoration:none;font-weight:800}
+    a:hover{text-decoration:underline}
+    input,select,textarea,button{
+      font:inherit;
+      border:1px solid var(--line);
+      background:#081426;
+      color:var(--text);
+      border-radius:13px;
+      padding:11px 13px;
+      outline:none;
+    }
+    input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.18)}
+    button,.button{
+      border:0;
+      border-radius:13px;
+      background:linear-gradient(135deg,#0875ff,#005bd9);
+      color:white;
+      font-weight:900;
+      padding:11px 15px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      cursor:pointer;
+      box-shadow:0 10px 26px rgba(10,132,255,.20);
+    }
+    .button.secondary,button.secondary{background:linear-gradient(135deg,#1e3a5f,#0e2037);box-shadow:none}
+    .button.ghost,button.ghost{background:#0a1626;border:1px solid var(--line);box-shadow:none;color:var(--text)}
+    .btn-sm{border:0;background:var(--danger);color:white;font-weight:900;border-radius:10px;padding:7px 10px;cursor:pointer}
+
+    .app{display:grid;grid-template-columns:290px minmax(0,1fr);min-height:100vh}
+    .sidebar{
+      position:sticky;top:0;height:100vh;padding:26px 18px;border-right:1px solid var(--line);
+      background:linear-gradient(180deg,rgba(7,19,33,.96),rgba(3,10,18,.98));
+      box-shadow:inset -1px 0 0 rgba(255,255,255,.02);
+      display:flex;flex-direction:column;gap:18px;
+    }
+    .logoBox{padding:6px 8px 18px;border-bottom:1px solid rgba(255,255,255,.07)}
+    .logoBox img{width:230px;max-height:150px;object-fit:contain;display:block;margin:auto}
+    .logoFallback{font-size:28px;font-weight:1000;color:var(--blue2);text-align:center}
+    .nav{display:grid;gap:8px}
+    .nav a,.shortcut{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      color:#dceeff;font-weight:800;padding:12px 14px;border-radius:14px;
+      border:1px solid transparent;
+    }
+    .nav a:hover,.nav a.active,.shortcut:hover{
+      background:linear-gradient(135deg,#0a84ff,#075bd1);
+      text-decoration:none;
+      box-shadow:var(--glow);
+    }
+    .nav .left{display:flex;align-items:center;gap:12px}
+    .ico{
+      width:24px;height:24px;display:grid;place-items:center;color:var(--blue2);
+      border:1px solid rgba(10,132,255,.25);border-radius:8px;background:rgba(10,132,255,.07);
+      font-size:14px;
+    }
+    .nav a.active .ico,.nav a:hover .ico{color:white;border-color:rgba(255,255,255,.3)}
+    .badge{min-width:24px;height:24px;border-radius:8px;background:#0d5cae;color:white;display:grid;place-items:center;font-size:12px;font-weight:900}
+    .shortcuts{margin-top:auto;border-top:1px solid rgba(255,255,255,.07);padding-top:16px;display:grid;gap:8px}
+    .sideFooter{color:var(--muted);font-size:12px;text-align:center;padding-top:12px}
+    .online{color:var(--success);font-weight:800}
+
+    .main{padding:22px 28px 36px;max-width:1760px;width:100%;margin:0 auto}
+    .top{
+      height:60px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;
+    }
+    .crumb{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:900}
+    .searchbar{display:flex;gap:10px;width:min(620px,45vw)}
+    .searchbar input{width:100%;background:#071322}
+    .userbar{display:flex;align-items:center;gap:14px}
+    .miniLogo{width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--line)}
+    .bell{position:relative;font-size:23px}
+    .bell::after{content:"2";position:absolute;right:-8px;top:-8px;width:18px;height:18px;border-radius:50%;background:#0a84ff;color:white;font-size:11px;display:grid;place-items:center;font-weight:900}
+
+    .metricGrid{display:grid;grid-template-columns:repeat(5,minmax(170px,1fr));gap:16px;margin-bottom:18px}
+    .metric{
+      min-height:150px;border:1px solid var(--line);border-radius:16px;background:
+        linear-gradient(135deg,rgba(13,27,47,.94),rgba(5,13,24,.95));
+      box-shadow:var(--shadow);padding:20px;position:relative;overflow:hidden;
+    }
+    .metric::after{
+      content:"";position:absolute;right:-28px;bottom:-30px;width:130px;height:90px;
+      background:linear-gradient(180deg,rgba(10,132,255,.20),transparent);
+      clip-path:polygon(0 65%,10% 55%,20% 62%,32% 50%,42% 58%,55% 35%,70% 52%,82% 18%,100% 28%,100% 100%,0 100%);
+      opacity:.9;
+    }
+    .metricTop{display:flex;gap:14px;align-items:flex-start;position:relative;z-index:1}
+    .metricIcon{
+      width:52px;height:52px;border-radius:15px;display:grid;place-items:center;
+      background:linear-gradient(135deg,rgba(10,132,255,.30),rgba(0,163,255,.08));
+      color:var(--blue2);font-size:28px;border:1px solid rgba(10,132,255,.25);
+    }
+    .metric span{display:block;color:var(--muted);font-weight:900;text-transform:uppercase;font-size:13px;letter-spacing:.35px}
+    .metric strong{display:block;font-size:38px;margin:6px 0 2px;line-height:1}
+    .metric small{color:var(--muted);font-size:13px}
+    .metric .unit{font-size:22px;margin-left:4px;color:#dceeff}
+    .health{color:var(--success)!important}
+    .spark{
+      position:absolute;left:26px;right:26px;bottom:18px;height:26px;border-bottom:1px solid rgba(10,132,255,.18);
+    }
+    .spark svg{width:100%;height:100%}
+    .spark polyline{fill:none;stroke:var(--blue);stroke-width:3;filter:drop-shadow(0 0 6px rgba(10,132,255,.45))}
+
+    .hardware{
+      display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:18px;
+      border:1px solid var(--line);border-radius:16px;padding:18px;background:linear-gradient(135deg,#071321,#09182b);
+      box-shadow:var(--shadow);
+    }
+    .hw{display:flex;align-items:center;gap:14px;min-height:92px}
+    .hwIcon{width:54px;height:54px;display:grid;place-items:center;border-radius:15px;background:rgba(10,132,255,.10);border:1px solid rgba(10,132,255,.25);color:var(--blue2);font-size:28px}
+    .hw span{display:block;color:var(--muted);text-transform:uppercase;font-size:12px;font-weight:900}
+    .hw strong{display:block;margin-top:4px;font-size:16px}
+    .hw small{display:block;color:var(--muted);margin-top:4px}
+
+    .contentGrid{display:grid;grid-template-columns:1fr 1.35fr;gap:18px}
+    .panel{
+      border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,rgba(11,23,40,.96),rgba(5,13,24,.96));
+      padding:22px;box-shadow:var(--shadow);
+    }
+    .panel h2{margin:0 0 18px;font-size:25px}
+    .identity table,.history table{width:100%;border-collapse:collapse}
+    th,td{text-align:left;border-bottom:1px solid rgba(147,169,197,.14);padding:13px 10px;vertical-align:middle}
+    th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.35px}
+    td{font-size:15px}
+    .muted{color:var(--muted)}
+    .linkStrong{color:var(--blue2);font-weight:900}
+    .timeline{position:relative;margin-left:14px;padding-left:28px;border-left:3px solid rgba(19,213,255,.35)}
+    .timeDot{position:absolute;left:-11px;width:20px;height:20px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 6px rgba(10,132,255,.12)}
+    .timeCard{border:1px solid var(--line);background:#081426;border-radius:16px;padding:18px}
+    .timeCard strong{color:var(--blue2);font-size:17px}
+    .lower{display:grid;grid-template-columns:1fr 1.25fr;gap:18px;margin-top:18px}
+    .lastBox{
+      display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:8px;
+    }
+    .scorePill,.risk,.pill{
+      display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;font-weight:900;font-size:13px;
+      background:#dffdea;color:#056b3b;
+    }
+    .risk-warning{background:#fff3cd;color:#9a6700}
+    .risk-high{background:#fee2e2;color:#991b1b}
+    .risk-critical{background:#111827;color:#fff}
+    .risk-none{background:#263244;color:#9ca3af}
+    .risk-ok{background:#dffdea;color:#056b3b}
+    .quickPanel{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+    .quickTile{
+      display:grid;place-items:center;text-align:center;gap:8px;padding:18px 10px;border:1px solid var(--line);border-radius:16px;background:#081426;color:var(--text);font-weight:800;
+    }
+    .quickTile:hover{text-decoration:none;border-color:var(--blue);box-shadow:var(--glow)}
+    .quickTile .bigIcon{font-size:29px;color:var(--blue2)}
+    .quickTile small{display:block;color:var(--muted);font-weight:600}
+    .serviceBar{
+      margin-top:18px;display:grid;grid-template-columns:repeat(5,1fr);gap:0;border:1px solid var(--line);border-radius:18px;background:linear-gradient(135deg,#071321,#09182b);box-shadow:var(--shadow);overflow:hidden;
+    }
+    .service{display:flex;align-items:center;gap:16px;padding:22px;border-right:1px solid rgba(147,169,197,.18)}
+    .service:last-child{border-right:0;justify-content:center}
+    .serviceIcon{font-size:36px;color:var(--blue2)}
+    .service strong{display:block;color:var(--blue2);font-size:18px}
+    .service span{display:block;color:#dceeff;margin-top:4px}
+    .serviceLogo{max-width:210px;max-height:76px;object-fit:contain}
+    .filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+    .tabline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    .tabline a{padding:10px 15px;border-radius:999px;background:#081426;border:1px solid var(--line);color:var(--text)}
+    .tabline a.active{background:linear-gradient(135deg,#0a84ff,#0066d8);color:#fff}
+    .empty{border:1px dashed var(--line);border-radius:16px;padding:28px;text-align:center;color:var(--muted)}
+    .hiddenTabs{display:none}
+    .mobileOnly{display:none}
+
+    @media(max-width:1280px){
+      .app{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.main{padding:20px}.metricGrid,.hardware{grid-template-columns:repeat(2,1fr)}.contentGrid,.lower{grid-template-columns:1fr}.quickPanel,.serviceBar{grid-template-columns:repeat(2,1fr)}.searchbar{width:100%}
+    }
+    @media(max-width:760px){
+      .metricGrid,.hardware,.quickPanel,.serviceBar{grid-template-columns:1fr}.top{height:auto;flex-direction:column;align-items:stretch}.lastBox{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="logoBox">
+      {% if logo_path %}
+        {% if logo_path.startswith('/static/') %}
+          <img src="{{ logo_path }}" alt="Restor-PC">
+        {% else %}
+          <img src="/storage/{{ logo_path }}" alt="Restor-PC">
+        {% endif %}
+      {% else %}
+        <div class="logoFallback">RESTOR-PC</div>
+      {% endif %}
+    </div>
+
+    <nav class="nav">
+      <a class="active" href="/"><span class="left"><span class="ico">⌂</span>Tableau de bord</span></a>
+      <a href="/interventions"><span class="left"><span class="ico">⬡</span>Interventions</span><span class="badge">{{ interventions|length }}</span></a>
+      <a href="/clients"><span class="left"><span class="ico">👥</span>Clients</span></a>
+      <a href="/machines"><span class="left"><span class="ico">▣</span>Machines</span></a>
+      <a href="/tickets"><span class="left"><span class="ico">□</span>Tickets</span><span class="badge">{{ tickets|length }}</span></a>
+      <a href="/quotes"><span class="left"><span class="ico">▤</span>Devis</span><span class="badge">{{ quotes|length }}</span></a>
+      <a href="/invoices"><span class="left"><span class="ico">▥</span>Factures</span><span class="badge">{{ invoices|length }}</span></a>
+      <a href="/parts"><span class="left"><span class="ico">⚙</span>Pièces</span></a>
+      <a href="/tools"><span class="left"><span class="ico">◈</span>Sauvegardes</span></a>
+      <a href="/interventions"><span class="left"><span class="ico">▧</span>Rapports</span></a>
+      <a href="/interventions"><span class="left"><span class="ico">⌬</span>Forensic</span></a>
+      <a href="/settings"><span class="left"><span class="ico">⚙</span>Paramètres</span></a>
+      {% if user.role == 'admin' %}<a href="/activity"><span class="left"><span class="ico">▤</span>Journal système</span></a>{% endif %}
+    </nav>
+
+    <div class="shortcuts">
+      <div class="muted">Raccourcis</div>
+      <a class="shortcut" href="#import"><span>▣ Importer ZIP</span></a>
+      <a class="shortcut" href="/tools"><span>▣ USB / PXE</span></a>
+      <a class="shortcut" href="/quotes"><span>▣ Nouveau devis</span></a>
+      <a class="shortcut" href="/invoices"><span>▣ Nouvelle facture</span></a>
+    </div>
+    <div class="sideFooter">© 2026 <strong>RESTOR-PC</strong><br>RescueGrid v12.1<br><span class="online">● En ligne</span></div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div class="crumb"><span class="ico">⌂</span> Tableau de bord</div>
+      <form class="searchbar" action="/search" method="get">
+        <input name="q" placeholder="Recherche globale : client, machine, BIOS, ticket, facture..." value="{{ search_query or '' }}">
+        <button>Rechercher</button>
+      </form>
+      <div class="userbar">
+        <span class="bell">♧</span>
+        <div style="text-align:right"><strong>RESTOR-PC</strong><br><span class="muted">{{ user.role|capitalize if user else "Administrateur" }}</span></div>
+        {% if logo_path %}
+          {% if logo_path.startswith('/static/') %}<img class="miniLogo" src="{{ logo_path }}" alt="Logo">{% else %}<img class="miniLogo" src="/storage/{{ logo_path }}" alt="Logo">{% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    <section class="metricGrid">
+      <div class="metric"><div class="metricTop"><div class="metricIcon">⬡</div><div><span>Interventions</span><strong>{{ stats.interventions }}</strong><small>Aujourd'hui</small></div></div><div class="spark"><svg viewBox="0 0 180 32"><polyline points="0,23 20,10 42,18 62,11 82,20 108,17 132,19 160,8 180,14"/></svg></div></div>
+      <div class="metric"><div class="metricTop"><div class="metricIcon">🏆</div><div><span>Meilleur score</span><strong>{{ stats.best_score }}<span class="unit">/100</span></strong><small>Score santé</small></div></div><div class="spark"><svg viewBox="0 0 180 32"><polyline points="0,25 17,12 36,22 55,21 74,10 95,19 122,23 145,18 180,6"/></svg></div></div>
+      <div class="metric"><div class="metricTop"><div class="metricIcon">〽</div><div><span>Dernier score</span><strong>{{ interventions[0].health_score if interventions and interventions[0].health_score is not none else 0 }}<span class="unit">/100</span></strong><small>{{ interventions[0].created_at.strftime('%d/%m/%Y') if interventions else '-' }}</small></div></div><div class="spark"><svg viewBox="0 0 180 32"><polyline points="0,23 20,15 41,19 61,11 83,20 104,20 129,18 150,23 180,9"/></svg></div></div>
+      <div class="metric"><div class="metricTop"><div class="metricIcon">♥</div><div><span>Statut disque</span><strong class="health">{{ interventions[0].disk_risk if interventions and interventions[0].disk_risk else 'OK' }}</strong><small>État général</small></div></div></div>
+      <div class="metric"><div class="metricTop"><div class="metricIcon">€</div><div><span>CA du mois</span><strong>{{ "%.0f"|format(stats.monthly_revenue) }} €</strong><small>{{ invoices|length }} facture{{ 's' if invoices|length > 1 else '' }}</small></div></div><div class="spark"><svg viewBox="0 0 180 32"><polyline points="0,25 23,22 46,24 70,20 95,21 120,16 145,25 180,8"/></svg></div></div>
+    </section>
+
+    <section class="hardware">
+      <div class="hw"><div class="hwIcon">▣</div><div><span>CPU</span><strong>{{ dashboard_specs.cpu }}</strong><small>{{ dashboard_specs.cpu_sub }}</small></div></div>
+      <div class="hw"><div class="hwIcon">▥</div><div><span>RAM</span><strong>{{ dashboard_specs.ram }}</strong><small>{{ dashboard_specs.ram_sub }}</small></div></div>
+      <div class="hw"><div class="hwIcon">▧</div><div><span>GPU</span><strong>{{ dashboard_specs.gpu }}</strong><small>{{ dashboard_specs.gpu_sub }}</small></div></div>
+      <div class="hw"><div class="hwIcon">▦</div><div><span>Windows</span><strong>{{ dashboard_specs.windows }}</strong><small>{{ dashboard_specs.windows_sub }}</small></div></div>
+      <div class="hw"><div class="hwIcon">▭</div><div><span>Stockage total</span><strong>{{ dashboard_specs.storage }}</strong><small>{{ dashboard_specs.storage_sub }}</small></div></div>
+    </section>
+
+    <div class="contentGrid">
+      <section class="panel identity">
+        <h2>Identité machine</h2>
+        {% set latest = interventions[0] if interventions else None %}
+        {% set m = latest.machine if latest and latest.machine else (machines[0] if machines else None) %}
+        <table>
+          <tr><th>Nom</th><td>{% if m %}<a href="/machine/{{ m.id }}">{{ m.machine_name or dashboard_specs.machine }}</a>{% else %}{{ dashboard_specs.machine }}{% endif %}</td></tr>
+          <tr><th>Fabricant</th><td>{{ m.manufacturer if m else '-' }}</td></tr>
+          <tr><th>Modèle</th><td>{{ m.model if m else '-' }}</td></tr>
+          <tr><th>Serial BIOS</th><td>{{ m.bios_serial if m else '-' }}</td></tr>
+          <tr><th>Windows</th><td>{{ dashboard_specs.windows }} {{ dashboard_specs.windows_sub }}</td></tr>
+          <tr><th>CPU</th><td>{{ dashboard_specs.cpu }}{% if dashboard_specs.cpu_sub %} <span class="muted">({{ dashboard_specs.cpu_sub }})</span>{% endif %}</td></tr>
+          <tr><th>RAM</th><td>{{ dashboard_specs.ram }}</td></tr>
+          <tr><th>GPU</th><td>{{ dashboard_specs.gpu }}</td></tr>
+          <tr><th>Stockage total</th><td>{{ dashboard_specs.storage }} <span class="muted">{{ dashboard_specs.storage_sub }}</span></td></tr>
+        </table>
+      </section>
+
+      <div class="stack">
+        <section class="panel">
+          <h2>Chronologie atelier</h2>
+          {% if interventions %}
+            <div class="timeline">
+              <span class="timeDot"></span>
+              <div class="timeCard">
+                <strong>{{ interventions[0].created_at.strftime('%d/%m/%Y %H:%M') }}</strong>
+                <div>{{ interventions[0].title }}</div>
+                <div class="muted">Score {{ interventions[0].health_score or '-' }}/100 · Disque {{ interventions[0].disk_risk or '-' }} · Statut {{ interventions[0].status or '-' }}</div>
+                <a href="/intervention/{{ interventions[0].id }}">Ouvrir le dossier</a>
+              </div>
+            </div>
+            <p style="margin:18px 0 0"><a href="/interventions">Voir toute la chronologie →</a></p>
+          {% else %}
+            <div class="empty">Aucune chronologie atelier.</div>
+          {% endif %}
+        </section>
+
+        <section class="panel history">
+          <h2>Historique interventions</h2>
+          {% if interventions %}
+          <table>
+            <thead><tr><th>Date</th><th>Client</th><th>Score</th><th>Rapport</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for item in interventions[:4] %}
+              <tr>
+                <td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                <td>{% if item.client %}<a href="/client/{{ item.client.id }}">{{ item.client.name }}</a>{% else %}-{% endif %}</td>
+                <td>{{ item.health_score or '-' }}/100</td>
+                <td><a href="/intervention/{{ item.id }}">Dossier</a> · {% if item.report_path %}<a href="/intervention/{{ item.id }}/download/report" target="_blank">Rapport</a>{% endif %} {% if item.archive_path %}· <a href="/intervention/{{ item.id }}/download/zip">ZIP</a>{% endif %}</td>
+                <td>⋮</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+            <div class="empty">Aucune intervention.</div>
+          {% endif %}
+        </section>
+      </div>
+    </div>
+
+    <div class="lower">
+      <section class="panel">
+        <h2>Dernière intervention</h2>
+        {% if interventions %}
+          {% set last = interventions[0] %}
+          <div class="lastBox">
+            <div><span class="muted">Machine</span><br><a href="/intervention/{{ last.id }}">{{ last.machine_name or dashboard_specs.machine }}</a></div>
+            <div><span class="muted">Date</span><br><strong>{{ last.created_at.strftime('%d/%m/%Y %H:%M') }}</strong></div>
+            <div><span class="muted">Score</span><br><span class="scorePill">{{ last.health_score or '-' }}/100</span></div>
+            <div><span class="muted">Client</span><br>{{ last.client.name if last.client else '-' }}</div>
+            <div><span class="muted">Risque</span><br>{% set b = risk_badge(last.disk_risk or last.data_loss_risk) %}<span class="risk {{ b.class }}">{{ b.label }}</span></div>
+            <div><span class="muted">Rapport</span><br>{% if last.report_path %}<a href="/intervention/{{ last.id }}/download/report" target="_blank">Rapport</a>{% endif %}</div>
+          </div>
+          <p style="margin-top:22px"><a class="button ghost" href="/intervention/{{ last.id }}">Ouvrir l'intervention →</a></p>
+        {% else %}
+          <div class="empty">Aucune intervention importée.</div>
+        {% endif %}
+      </section>
+
+      <section class="panel">
+        <h2>Actions rapides</h2>
+        <div class="quickPanel">
+          <a class="quickTile" href="#import"><span class="bigIcon">⇧</span>Importer ZIP<small>Rapport RescueGrid</small></a>
+          <a class="quickTile" href="/tools"><span class="bigIcon">▣</span>USB / PXE<small>Bootable</small></a>
+          <a class="quickTile" href="/quotes"><span class="bigIcon">▤</span>Nouveau devis<small>Créer</small></a>
+          <a class="quickTile" href="/invoices"><span class="bigIcon">▥</span>Nouvelle facture<small>Créer</small></a>
+          <a class="quickTile" href="/backup/database"><span class="bigIcon">⬡</span>Backup BDD<small>Sauvegarder</small></a>
+          <a class="quickTile" href="/activity"><span class="bigIcon">◉</span>Journal<small>Consulter</small></a>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" id="import" style="margin-top:18px">
+      <h2>Importer une archive RescueGrid</h2>
+      <form action="/upload" method="post" enctype="multipart/form-data" style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end">
+        <div><label>Client</label><input name="client_name" placeholder="Client_Dupont" required></div>
+        <div><label>Archive RescueGrid</label><input type="file" name="file" accept=".zip" required></div>
+        <button>Importer ZIP</button>
+      </form>
+    </section>
+
+    <section class="panel" id="interventions" style="margin-top:18px">
+      <div class="tabline">
+        <a class="active" href="/interventions">Interventions ({{ interventions|length }})</a>
+        <a href="/clients">Clients ({{ clients|length }})</a>
+        <a href="/machines">Machines ({{ machines|length }})</a>
+        <a href="/tickets">Tickets ({{ tickets|length }})</a>
+        <a href="/invoices">Factures ({{ invoices|length }})</a>
+        <a href="/quotes">Devis ({{ quotes|length }})</a>
+        <a href="/parts">Pièces ({{ parts|length }})</a>
+      </div>
+
+      <form class="filters" method="get" action="/">
+        <select name="status" onchange="this.form.submit()">
+          <option value="">Tous statuts</option>
+          {% for st in atelier_statuses %}<option value="{{ st }}" {% if filter_status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}
+        </select>
+        <select name="sort" onchange="this.form.submit()">
+          <option value="">Tri : récent</option>
+          <option value="date_asc" {% if filter_sort == 'date_asc' %}selected{% endif %}>Plus ancien</option>
+          <option value="score" {% if filter_sort == 'score' %}selected{% endif %}>Score santé</option>
+        </select>
+      </form>
+
+      <h2>Dernières interventions</h2>
+      {% if interventions %}
+      <table>
+        <thead><tr><th>Date</th><th>Client</th><th>Machine</th><th>Score</th><th>Risque</th><th>Statut</th><th>Rapport</th><th></th></tr></thead>
+        <tbody>
+        {% for item in interventions %}
+          {% set badge = risk_badge(item.disk_risk or item.data_loss_risk) %}
+          <tr>
+            <td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td>{% if item.client %}<a href="/client/{{ item.client.id }}">{{ item.client.name }}</a>{% else %}-{% endif %}</td>
+            <td>{% if item.machine %}<a href="/machine/{{ item.machine.id }}">{{ item.machine.machine_name or item.bios_serial or 'Machine' }}</a>{% else %}{{ item.machine_name or '-' }}{% endif %}</td>
+            <td>{{ item.health_score if item.health_score is not none else '-' }}/100</td>
+            <td><span class="risk {{ badge.class }}">{{ badge.label }}</span></td>
+            <td><form action="/intervention/{{ item.id }}/status" method="post"><select name="status" onchange="this.form.submit()">{% for st in atelier_statuses %}<option value="{{ st }}" {% if item.status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select></form></td>
+            <td><a href="/intervention/{{ item.id }}">Dossier</a>{% if item.report_path %} · <a href="/intervention/{{ item.id }}/download/report" target="_blank">Rapport</a>{% endif %}{% if item.archive_path %} · <a href="/intervention/{{ item.id }}/download/zip">ZIP</a>{% endif %}</td>
+            <td><form action="/delete/intervention/{{ item.id }}" method="post" onsubmit="return confirm('Supprimer cette intervention ?')"><button class="btn-sm">Suppr.</button></form></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<div class="empty">Aucune intervention enregistrée.</div>{% endif %}
+    </section>
+
+
+    <section class="panel" id="clients" style="margin-top:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h2 style="margin:0">Clients ({{ clients|length }})</h2>
+        <a href="/clients" style="font-size:13px;font-weight:700;color:var(--blue2)">Voir tous les clients →</a>
+      </div>
+      {% if clients %}
+      <table>
+        <thead><tr><th>Client</th><th>Email</th><th>Téléphone</th><th>Interventions</th></tr></thead>
+        <tbody>
+        {% for c in clients[:5] %}
+          <tr>
+            <td><a href="/client/{{ c.id }}"><strong>{{ c.name }}</strong></a></td>
+            <td>{{ c.email or '—' }}</td>
+            <td>{{ c.phone or '—' }}</td>
+            <td>{{ c.interventions|length }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if clients|length > 5 %}
+      <div style="margin-top:10px;text-align:center">
+        <a href="/clients" class="btn btn-secondary" style="font-size:13px">Voir les {{ clients|length }} clients →</a>
+      </div>
+      {% endif %}
+      {% else %}<div class="empty">Aucun client. <a href="/clients">Ajouter un client →</a></div>{% endif %}
+    </section>
+
+    <section class="panel" id="machines" style="margin-top:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h2 style="margin:0">Machines ({{ machines|length }})</h2>
+        <a href="/machines" style="font-size:13px;font-weight:700;color:var(--blue2)">Voir toutes les machines →</a>
+      </div>
+      {% if machines %}
+      <table>
+        <thead><tr><th>Machine</th><th>Fabricant</th><th>BIOS</th><th>Dernière intervention</th></tr></thead>
+        <tbody>
+        {% for m in machines[:5] %}
+          <tr>
+            <td><a href="/machine/{{ m.id }}"><strong>{{ m.machine_name or 'Machine #' ~ m.id }}</strong></a></td>
+            <td>{{ m.manufacturer or '—' }}</td>
+            <td><code>{{ m.bios_serial or '—' }}</code></td>
+            <td>{{ m.last_intervention.strftime('%d/%m/%Y') if m.last_intervention else '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if machines|length > 5 %}
+      <div style="margin-top:10px;text-align:center">
+        <a href="/machines" class="btn btn-secondary" style="font-size:13px">Voir les {{ machines|length }} machines →</a>
+      </div>
+      {% endif %}
+      {% else %}<div class="empty">Aucune machine. <a href="/machines">Gérer les machines →</a></div>{% endif %}
+    </section>
+
+    <section class="serviceBar">
+      <div class="service"><span class="serviceIcon">🛡</span><div><strong>INTERVENTION</strong><span>Rapports détaillés et professionnels</span></div></div>
+      <div class="service"><span class="serviceIcon">◷</span><div><strong>RÉACTIVITÉ</strong><span>Dépannage rapide et efficace</span></div></div>
+      <div class="service"><span class="serviceIcon">▣</span><div><strong>SÉCURISATION</strong><span>Protection de vos données</span></div></div>
+      <div class="service"><span class="serviceIcon">◉</span><div><strong>PERFORMANCE</strong><span>Optimisation système sur-mesure</span></div></div>
+      <div class="service">
+        {% if logo_path %}
+          {% if logo_path.startswith('/static/') %}<img class="serviceLogo" src="{{ logo_path }}" alt="Restor-PC">{% else %}<img class="serviceLogo" src="/storage/{{ logo_path }}" alt="Restor-PC">{% endif %}
+        {% else %}<strong>RESTOR-PC</strong>{% endif %}
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

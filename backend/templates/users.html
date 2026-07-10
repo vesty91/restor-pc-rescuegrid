@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Utilisateurs - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}👤{% endblock %}
+{% block breadcrumb %}Utilisateurs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Utilisateurs</h1>
+  <p>Gestion des comptes technicien et administrateur.</p>
+</div>
+
+{% if error %}<div class="notice error">✗ {{ error }}</div>{% endif %}
+
+<div class="grid2">
+  <div class="card">
+    <h2>Nouveau technicien</h2>
+    <form action="/users" method="post">
+      <label>Identifiant</label><input name="username" required>
+      <label>Mot de passe</label><input name="password" type="password" required minlength="8">
+      <label>Nom complet</label><input name="full_name">
+      <label>Rôle</label>
+      <select name="role">
+        <option value="technicien">Technicien</option>
+        <option value="admin">Administrateur</option>
+      </select>
+      <button style="margin-top:16px">Créer le compte</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Comptes ({{ users|length }})</h2>
+    {% if users %}
+    <table>
+      <thead><tr><th>Identifiant</th><th>Nom</th><th>Rôle</th><th>Dernière connexion</th><th></th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td><strong>{{ u.username }}</strong></td>
+          <td>{{ u.full_name or '—' }}</td>
+          <td><span class="pill {{ 'paid' if u.role == 'admin' else '' }}">{{ u.role|capitalize }}</span></td>
+          <td class="muted">{{ u.last_login.strftime('%d/%m/%Y %H:%M') if u.last_login else 'Jamais' }}</td>
+          <td>
+            {% if u.username != user.username %}
+            <form action="/delete/user/{{ u.id }}" method="post" onsubmit="return confirm('Supprimer ce compte ?')">
+              <button class="btn-sm">✕</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucun utilisateur.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

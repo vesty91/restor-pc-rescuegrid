@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}👥{% endblock %}
+{% block breadcrumb %}<a href="/clients">Clients</a> › {{ client.name }}{% endblock %}
+
+{% block content %}
+{% if request.query_params.get('mail') == 'missing_client_email' %}
+<div class="notice error">⚠ Email client manquant — renseigne l'adresse email dans la fiche avant l'envoi.</div>
+{% endif %}
+
+<div class="page-header">
+  <h1>{{ client.name }}</h1>
+  <p>Client depuis le {{ client.created_at.strftime('%d/%m/%Y') }}{% if client.email %} · {{ client.email }}{% endif %}{% if client.phone %} · {{ client.phone }}{% endif %}</p>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi"><span>Interventions</span><strong>{{ interventions|length }}</strong></div>
+  <div class="kpi"><span>Email</span><strong style="font-size:14px;word-break:break-all">{{ client.email or '—' }}</strong></div>
+  <div class="kpi"><span>Téléphone</span><strong style="font-size:16px">{{ client.phone or '—' }}</strong></div>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Fiche client</h2>
+    <form method="post" action="/client/{{ client.id }}/update">
+      <label>Nom</label>
+      <input name="name" value="{{ client.name }}" required>
+      <label>Contact</label>
+      <input name="contact_name" value="{{ client.contact_name or '' }}" placeholder="Nom du contact">
+      <label>Email</label>
+      <input type="email" name="email" value="{{ client.email or '' }}" placeholder="client@email.fr">
+      <label>Téléphone</label>
+      <input name="phone" value="{{ client.phone or '' }}" placeholder="06…">
+      <label>Adresse</label>
+      <textarea name="address" rows="3" placeholder="Adresse complète">{{ client.address or '' }}</textarea>
+      <button style="margin-top:16px">Enregistrer</button>
+    </form>
+    <p class="hint" style="margin-top:10px">Ces informations sont reprises dans les devis, factures et emails.</p>
+  </div>
+
+  <div class="card">
+    <h2>Interventions ({{ interventions|length }})</h2>
+    {% if interventions %}
+    <table>
+      <thead><tr><th>Date</th><th>Titre</th><th>Machine</th><th>Score</th><th>Statut</th></tr></thead>
+      <tbody>
+        {% for item in interventions %}
+        <tr>
+          <td>{{ item.created_at.strftime('%d/%m/%Y') }}</td>
+          <td><a href="/intervention/{{ item.id }}">{{ item.title }}</a></td>
+          <td>{{ item.machine_name or '—' }}</td>
+          <td>{{ item.health_score if item.health_score is not none else '—' }}</td>
+          <td><span class="pill">{{ item.status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucune intervention pour ce client.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

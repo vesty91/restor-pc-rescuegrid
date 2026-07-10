@@ -1,0 +1,13 @@
+.git
+.gitignore
+backend/.venv
+**/__pycache__
+**/*.pyc
+.env
+*.db
+storage
+backend/storage
+volumes
+Intervention_*
+*.zip
+*.7z

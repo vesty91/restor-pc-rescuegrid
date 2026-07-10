@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Machines - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}▣{% endblock %}
+{% block breadcrumb %}Machines{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Machines</h1>
+  <p>{{ machines|length }} machine(s) enregistrée(s) — identifiées par le numéro de série BIOS.</p>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Enregistrer une machine</h2>
+    <form action="/machines" method="post">
+      <label>Nom de la machine</label>
+      <input name="machine_name" placeholder="PC-DUPONT, LAPTOP-BUREAU…" required>
+      <label>Serial BIOS</label>
+      <input name="bios_serial" placeholder="Ex : 5CG12345XY">
+      <div class="grid2">
+        <div><label>Fabricant</label><input name="manufacturer" placeholder="HP, Dell, Lenovo…"></div>
+        <div><label>Modèle</label><input name="model" placeholder="ProBook 450 G9…"></div>
+      </div>
+      <button style="margin-top:14px">Enregistrer</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Parc machines</h2>
+    {% if machines %}
+    <table>
+      <thead><tr><th>Machine</th><th>Fabricant</th><th>BIOS Serial</th><th>Dernière intervention</th><th></th></tr></thead>
+      <tbody>
+        {% for m in machines %}
+        <tr>
+          <td><a href="/machine/{{ m.id }}"><strong>{{ m.machine_name or 'Machine #' ~ m.id }}</strong></a>{% if m.model %}<br><span class="hint">{{ m.model }}</span>{% endif %}</td>
+          <td>{{ m.manufacturer or '—' }}</td>
+          <td><code>{{ m.bios_serial or '—' }}</code></td>
+          <td>{{ m.last_intervention.strftime('%d/%m/%Y') if m.last_intervention else '—' }}</td>
+          <td>
+            <div class="action-menu">
+              <button class="action-menu-btn" type="button">⋯</button>
+              <div class="action-dropdown">
+                <a href="/machine/{{ m.id }}">↗ Voir fiche</a>
+                <form action="/delete/machine/{{ m.id }}" method="post" onsubmit="return confirm('Supprimer cette machine ?')">
+                  <button class="drop-danger">🗑 Supprimer</button>
+                </form>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucune machine enregistrée. Les machines sont créées automatiquement lors de l'import d'une archive ZIP.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

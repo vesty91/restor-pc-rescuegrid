@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Interventions - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}⬡{% endblock %}
+{% block breadcrumb %}Interventions{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Interventions</h1>
+  <p>{{ interventions|length }} intervention(s) — importez une archive ZIP agent ou créez manuellement.</p>
+</div>
+
+<!-- Filtres -->
+<div class="card" style="margin-bottom:16px;padding:14px 18px">
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div style="flex:2;min-width:160px">
+      <label style="margin-top:0">Recherche</label>
+      <input name="q" value="{{ search_query }}" placeholder="Client, machine, BIOS…">
+    </div>
+    <div style="flex:1;min-width:120px">
+      <label style="margin-top:0">Statut</label>
+      <select name="status">
+        <option value="">Tous</option>
+        {% for s in atelier_statuses %}
+        <option value="{{ s }}" {% if filter_status == s %}selected{% endif %}>{{ s|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:120px">
+      <label style="margin-top:0">Trier par</label>
+      <select name="sort">
+        <option value="">Date ↓</option>
+        <option value="score_asc" {% if filter_sort == 'score_asc' %}selected{% endif %}>Score ↑</option>
+        <option value="score_desc" {% if filter_sort == 'score_desc' %}selected{% endif %}>Score ↓</option>
+      </select>
+    </div>
+    <button style="height:42px;align-self:flex-end">Filtrer</button>
+    {% if search_query or filter_status or filter_sort %}
+    <a href="/interventions" class="btn btn-secondary" style="height:42px;align-self:flex-end">✕ Réinitialiser</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="grid2">
+  <!-- Import ZIP -->
+  <div class="card">
+    <h2>Importer une archive ZIP</h2>
+    <p class="muted" style="margin-bottom:12px">Archive générée par l'agent RescueGrid PowerShell sur la machine client.</p>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+      <label>Nom du client</label>
+      <input name="client_name" required placeholder="Jean Dupont">
+      <label>Archive ZIP</label>
+      <input type="file" name="file" accept=".zip" required>
+      <label>Clé API (optionnel)</label>
+      <input name="upload_key" placeholder="Laissez vide si connecté">
+      <button style="margin-top:14px">Importer l'archive</button>
+    </form>
+    <hr>
+    <h2 style="margin-top:0">Créer manuellement</h2>
+    <form action="/interventions" method="post">
+      <label>Client</label>
+      <select name="client_id" required>
+        {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+      </select>
+      <label>Titre</label>
+      <input name="title" required placeholder="Ex : Diagnostic PC portable">
+      <div class="grid2">
+        <div>
+          <label>Machine</label>
+          <select name="machine_id">
+            <option value="0">— Nouvelle machine —</option>
+            {% for m in machines %}<option value="{{ m.id }}">{{ m.machine_name or 'Machine #' ~ m.id }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Nom machine (si nouvelle)</label>
+          <input name="machine_name" placeholder="PC-CLIENT…">
+        </div>
+      </div>
+      <button style="margin-top:14px">Créer</button>
+    </form>
+  </div>
+
+  <!-- Liste -->
+  <div class="card">
+    <h2>Liste ({{ interventions|length }})</h2>
+    {% if interventions %}
+    <table>
+      <thead><tr><th>Date</th><th>Client / Machine</th><th>Score</th><th>Disque</th><th>Statut</th><th></th></tr></thead>
+      <tbody>
+        {% for i in interventions %}
+        <tr>
+          <td style="white-space:nowrap">{{ i.created_at.strftime('%d/%m/%Y') }}</td>
+          <td>
+            <a href="/intervention/{{ i.id }}"><strong>{{ i.title }}</strong></a><br>
+            <span class="hint">{% if i.client %}<a href="/client/{{ i.client.id }}">{{ i.client.name }}</a>{% else %}—{% endif %} · {{ i.machine_name or '—' }}</span>
+          </td>
+          <td>
+            {% if i.health_score is not none %}
+            <strong {% if i.health_score < 40 %}class="text-danger"{% elif i.health_score < 70 %}class="text-warning"{% else %}class="text-success"{% endif %}>{{ i.health_score }}</strong>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if i.disk_risk %}
+            <span class="pill {% if 'crit' in (i.disk_risk|lower) or 'rouge' in (i.disk_risk|lower) %}err{% elif 'warn' in (i.disk_risk|lower) or 'orange' in (i.disk_risk|lower) %}draft{% else %}ok{% endif %}">
+              {{ i.disk_risk[:12] }}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+          <td><span class="pill">{{ i.status }}</span></td>
+          <td>
+            <div class="action-menu">
+              <button class="action-menu-btn" type="button">⋯</button>
+              <div class="action-dropdown">
+                <a href="/intervention/{{ i.id }}">↗ Ouvrir le dossier</a>
+                {% if i.report_path %}<a href="/intervention/{{ i.id }}/download/report" target="_blank">▤ Rapport HTML</a>{% endif %}
+                {% if i.archive_path %}<a href="/intervention/{{ i.id }}/download/zip">⬇ Archive ZIP</a>{% endif %}
+                <a href="/intervention/{{ i.id }}/label" target="_blank">🏷 Étiquette</a>
+                <form action="/delete/intervention/{{ i.id }}" method="post" onsubmit="return confirm('Supprimer cette intervention ?')">
+                  <button class="drop-danger">🗑 Supprimer</button>
+                </form>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div style="margin-top:12px;display:flex;gap:10px">
+      <a href="/export/interventions.xlsx" class="btn btn-secondary btn-sm">⬇ Export Excel</a>
+      <a href="/export/interventions.csv" class="btn btn-secondary btn-sm">⬇ Export CSV</a>
+    </div>
+    {% else %}
+    <div class="empty">Aucune intervention{% if search_query or filter_status %} correspondant aux filtres{% endif %}.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

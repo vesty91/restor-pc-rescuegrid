@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Paramètres - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}⚙{% endblock %}
+{% block breadcrumb %}Paramètres{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Paramètres</h1>
+  <p>Compte : <strong>{{ user.username }}</strong> ({{ user.role }})</p>
+</div>
+
+{% if message %}<div class="notice success">✓ {{ message }}</div>{% endif %}
+{% if error %}<div class="notice error">✗ {{ error }}</div>{% endif %}
+
+<div class="grid2">
+  <div class="card">
+    <h2>Changer le mot de passe</h2>
+    <form action="/settings/password" method="post">
+      <label>Mot de passe actuel</label>
+      <input type="password" name="current_password" required>
+      <label>Nouveau mot de passe</label>
+      <input type="password" name="new_password" required minlength="8">
+      <label>Confirmer</label>
+      <input type="password" name="confirm_password" required minlength="8">
+      <button style="margin-top:16px">Changer le mot de passe</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Email / SMTP Infomaniak</h2>
+    <p class="muted" style="margin-bottom:14px">Expéditeur : <strong>contact@restor-pc.fr</strong>. Le mot de passe SMTP se configure dans le fichier <code>.env</code>.</p>
+    <form action="/settings/email-test" method="post">
+      <label>Email de test</label>
+      <input type="email" name="test_email" placeholder="client@email.fr" required>
+      <button style="margin-top:16px">Envoyer un email de test</button>
+    </form>
+    <hr>
+    <p class="hint">Serveur : <code>mail.infomaniak.com</code> — port <code>587</code> — STARTTLS</p>
+    <p class="hint" style="margin-top:8px">En production : définir <code>SECRET_KEY</code>, <code>ADMIN_PASSWORD</code>, <code>MAIL_PASSWORD</code> et <code>UPLOAD_API_KEY</code> dans <code>.env</code></p>
+  </div>
+</div>
+{% endblock %}

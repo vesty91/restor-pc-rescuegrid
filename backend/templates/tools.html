@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Outils USB/PXE - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}◈{% endblock %}
+{% block breadcrumb %}Outils technicien{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Centre outils technicien</h1>
+  <p>Clé USB RescueGrid, menu WinPE, PXE réseau et déploiement Synology.</p>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>1. Créer clé USB</h2>
+    <p class="muted" style="margin-bottom:12px">Prépare une clé technicien avec scripts RescueGrid, menu WinPE et outils externes.</p>
+    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\Create-RescueGridUSB.ps1 -TargetDrive E: -DashboardUrl "http://192.168.1.10:8000" -IncludeProject</pre>
+  </div>
+  <div class="card">
+    <h2>2. Menu WinPE</h2>
+    <p class="muted" style="margin-bottom:12px">Lance le menu atelier depuis la clé ou depuis WinPE.</p>
+    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\Start-RescueGrid.ps1</pre>
+  </div>
+  <div class="card">
+    <h2>3. Serveur PXE</h2>
+    <p class="muted" style="margin-bottom:12px">Boot réseau pour démarrer plusieurs machines sans clé USB.</p>
+    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\Setup-PXERescueServer.ps1</pre>
+  </div>
+  <div class="card">
+    <h2>4. Déploiement Synology</h2>
+    <p class="muted" style="margin-bottom:12px">Docker Compose avec PostgreSQL, Nginx et MinIO sur NAS Synology.</p>
+    <pre>docker-compose -f docker-compose.synology.yml up -d</pre>
+  </div>
+  <div class="card">
+    <h2>5. Sauvegarde base de données</h2>
+    <p class="muted" style="margin-bottom:12px">Télécharger une copie de la base SQLite.</p>
+    <a href="/backup/database" class="btn btn-secondary" style="display:inline-flex;margin-top:4px">⬇ Télécharger backup DB</a>
+  </div>
+  <div class="card">
+    <h2>6. Diagnostic santé</h2>
+    <p class="muted" style="margin-bottom:12px">Vérifier l'état du serveur dashboard.</p>
+    <a href="/health" target="_blank" class="btn btn-secondary" style="display:inline-flex;margin-top:4px">◉ Healthcheck</a>
+  </div>
+</div>
+{% endblock %}

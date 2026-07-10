@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block title %}Intervention #{{ intervention.id }} - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}⬡{% endblock %}
+{% block breadcrumb %}<a href="/interventions">Interventions</a> › #{{ intervention.id }} — {{ intervention.title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .sig-canvas{border:1px solid var(--line);border-radius:10px;width:100%;max-width:520px;height:180px;background:#040b14;cursor:crosshair}
+  .sig-preview{max-width:100%;border-radius:10px;border:1px solid var(--line)}
+  .checklist{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+  .check{background:#0b1728;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .check small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+  .timeline-list{display:grid;gap:12px}
+  .tl-item{border-left:3px solid var(--blue);padding-left:14px}
+  .photo-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+  .photo-thumb img{width:100%;height:100px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+  .photo-thumb figcaption{font-size:11px;color:var(--muted);margin-top:4px;text-align:center}
+  .ai-summary{background:#040b14;border:1px solid var(--line);border-radius:10px;padding:16px;font-size:13px;line-height:1.7;color:#c8dff0;white-space:pre-wrap}
+  .mini-table th{font-size:10px}
+  .mini-table td{font-size:13px;padding:8px 10px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Intervention #{{ intervention.id }}</h1>
+  <p>{{ intervention.title }} · {{ intervention.client.name if intervention.client else 'Client inconnu' }} · <span class="pill">{{ intervention.status }}</span></p>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-grid" style="margin-bottom:18px">
+  <div class="kpi"><span>Score santé</span><strong>{{ intervention.health_score or '—' }}<span style="font-size:14px;color:var(--muted)">/100</span></strong></div>
+  <div class="kpi"><span>Disque</span><strong style="font-size:16px">{{ intervention.disk_risk or '—' }}</strong></div>
+  <div class="kpi"><span>Risque données</span><strong style="font-size:16px">{{ intervention.data_loss_risk or '—' }}</strong></div>
+  <div class="kpi"><span>Machine</span><strong style="font-size:14px">{{ intervention.machine_name or '—' }}</strong></div>
+  <div class="kpi"><span>BIOS Serial</span><strong style="font-size:13px"><code>{{ intervention.bios_serial or '—' }}</code></strong></div>
+  <div class="kpi"><span>Date</span><strong style="font-size:14px">{{ intervention.created_at.strftime('%d/%m/%Y') }}</strong></div>
+</div>
+
+<!-- Téléchargements -->
+<div class="card" style="margin-bottom:16px">
+  <h2>Téléchargements</h2>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    {% if intervention.report_path %}<a class="btn" href="/intervention/{{ intervention.id }}/download/report">▤ Rapport HTML</a>{% endif %}
+    {% if intervention.archive_path %}<a class="btn btn-secondary" href="/intervention/{{ intervention.id }}/download/zip">⬇ Archive ZIP</a>{% endif %}
+    {% if intervention.report_path %}<a class="btn btn-secondary" href="/intervention/{{ intervention.id }}/download/manifest">◻ Manifest SHA256</a>{% endif %}
+    <a class="btn btn-secondary" href="/intervention/{{ intervention.id }}/label" target="_blank">🏷 Étiquette</a>
+  </div>
+</div>
+
+<!-- Devis / Facturation -->
+<div class="card" style="margin-bottom:16px">
+  <h2>Devis / Facturation</h2>
+  <div class="grid2" style="margin-bottom:18px">
+    <div class="card" style="background:#071322">
+      <h3>Créer un devis</h3>
+      <form action="/quotes" method="post">
+        <input type="hidden" name="intervention_id" value="{{ intervention.id }}">
+        <label>Description client</label>
+        <textarea name="description" rows="2">Diagnostic atelier, contrôle SMART, analyse Windows et rapport d'intervention Restor-PC.</textarea>
+        <div class="grid2">
+          <div><label>Montant (€)</label><input name="amount" type="number" step="0.01" value="{{ '%.2f'|format(default_amount or 60) }}"></div>
+          <div><label>Validité</label><input name="valid_until" type="date" value="{{ default_quote_until }}"></div>
+        </div>
+        <input type="hidden" name="status" value="draft">
+        <button style="margin-top:12px">Créer le devis</button>
+      </form>
+    </div>
+    <div class="card" style="background:#071322">
+      <h3>Créer une facture directe</h3>
+      <form action="/invoices" method="post">
+        <input type="hidden" name="intervention_id" value="{{ intervention.id }}">
+        <label>Désignation client</label>
+        <input name="notes" value="Diagnostic atelier, contrôle système et intervention Restor-PC.">
+        <div class="grid2">
+          <div><label>Montant (€)</label><input name="amount" type="number" step="0.01" value="{{ '%.2f'|format(default_amount or 60) }}"></div>
+          <div><label>Échéance</label><input name="due_date" type="date" value="{{ default_invoice_due }}"></div>
+        </div>
+        <input type="hidden" name="status" value="draft">
+        <button style="margin-top:12px">Créer la facture</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div>
+      <h3>Devis liés</h3>
+      {% if quotes %}
+      <table class="mini-table">
+        <thead><tr><th>N°</th><th>Total</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          {% for q in quotes %}
+          <tr>
+            <td><strong>{{ q.quote_number }}</strong></td>
+            <td>{{ "%.2f"|format(q.total) }} €</td>
+            <td><span class="pill {% if q.status == 'accepted' %}accepted{% elif q.status == 'draft' %}draft{% elif q.status == 'cancelled' %}cancelled{% endif %}">{% if q.status == 'draft' %}Brouillon{% elif q.status == 'sent' %}Envoyé{% elif q.status == 'accepted' %}Accepté{% elif q.status == 'cancelled' %}Refusé{% else %}{{ q.status }}{% endif %}</span></td>
+            <td class="actions-cell">
+              <a href="/quote/{{ q.id }}/pdf" target="_blank" class="btn btn-secondary btn-sm">PDF</a>
+              <form action="/quote/{{ q.id }}/convert" method="post"><button class="btn btn-secondary btn-sm">→ Facture</button></form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">Aucun devis lié.</p>{% endif %}
+    </div>
+    <div>
+      <h3>Factures liées</h3>
+      {% if invoices %}
+      <table class="mini-table">
+        <thead><tr><th>N°</th><th>Total</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          {% for inv in invoices %}
+          <tr>
+            <td><strong>{{ inv.invoice_number }}</strong></td>
+            <td>{{ "%.2f"|format(inv.total) }} €</td>
+            <td><span class="pill {% if inv.status == 'paid' %}paid{% elif inv.status == 'draft' %}draft{% elif inv.status == 'cancelled' %}cancelled{% elif inv.status == 'issued' %}issued{% endif %}">{% if inv.status == 'draft' %}Brouillon{% elif inv.status == 'issued' %}Émise{% elif inv.status == 'paid' %}Payée{% elif inv.status == 'cancelled' %}Annulée{% else %}{{ inv.status }}{% endif %}</span></td>
+            <td class="actions-cell">
+              <a href="/invoice/{{ inv.id }}/pdf" target="_blank" class="btn btn-secondary btn-sm">PDF</a>
+              {% if inv.status != 'paid' %}<form action="/invoice/{{ inv.id }}/status" method="post"><input type="hidden" name="status" value="paid"><input type="hidden" name="payment_method" value="cash"><button class="btn-sm">✓</button></form>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">Aucune facture liée.</p>{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- IA Summary + Chronologie -->
+<div class="grid2" style="margin-bottom:16px">
+  {% if intervention.ai_summary %}
+  <div class="card">
+    <h2>Diagnostic IA Restor-PC</h2>
+    <div class="ai-summary">{{ intervention.ai_summary }}</div>
+  </div>
+  {% endif %}
+  <div class="card">
+    <h2>Chronologie intervention</h2>
+    <div class="timeline-list">
+      <div class="tl-item"><strong>{{ intervention.created_at.strftime('%d/%m/%Y %H:%M') }}</strong> — Importée dans RescueGrid</div>
+      <div class="tl-item"><strong>Diagnostic</strong> — Rapport, inventaire, SMART et BlackBox disponibles</div>
+      {% if quotes %}<div class="tl-item"><strong>Devis</strong> — {{ quotes|length }} devis lié(s)</div>{% endif %}
+      {% if invoices %}<div class="tl-item"><strong>Facturation</strong> — {{ invoices|length }} facture(s) liée(s)</div>{% endif %}
+      <div class="tl-item"><strong>État actuel</strong> — <span class="pill">{{ intervention.status or 'nouvelle' }}</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Checklist -->
+<div class="card" style="margin-bottom:16px">
+  <h2>Checklist atelier</h2>
+  <div class="checklist">
+    <div class="check">☑ SMART<small>Contrôle disques et températures</small></div>
+    <div class="check">☑ Sauvegarde<small>À faire avant action destructive</small></div>
+    <div class="check">☑ Windows<small>Journaux et état système</small></div>
+    <div class="check">☑ Rapport<small>Rapport + BlackBox + SHA256</small></div>
+    <div class="check">☐ Malware<small>Analyse antivirus/anti-malware</small></div>
+    <div class="check">☐ CHKDSK<small>Uniquement après sauvegarde</small></div>
+    <div class="check">☐ Pilotes<small>Contrôle drivers importants</small></div>
+    <div class="check">☐ Nettoyage<small>Optimisation et finitions</small></div>
+  </div>
+</div>
+
+<!-- Main d'œuvre + Pièces -->
+<div class="grid2" style="margin-bottom:16px">
+  <div class="card">
+    <h2>Main d'œuvre</h2>
+    <form action="/intervention/{{ intervention.id }}/labor" method="post">
+      <div class="grid2">
+        <div><label>Temps passé (min)</label><input name="labor_minutes" type="number" value="{{ intervention.labor_minutes or 0 }}"></div>
+        <div><label>Tarif horaire (€)</label><input name="labor_rate" type="number" step="0.01" value="{{ intervention.labor_rate or 60 }}"></div>
+      </div>
+      <button style="margin-top:12px">Enregistrer</button>
+    </form>
+    {% if intervention.labor_minutes and intervention.labor_rate %}
+    <p style="margin-top:12px">Coût MO : <strong>{{ "%.2f"|format((intervention.labor_minutes / 60) * intervention.labor_rate) }} €</strong></p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>Pièces utilisées</h2>
+    <form action="/intervention/{{ intervention.id }}/parts" method="post">
+      <label>Pièce en stock</label>
+      <select name="part_id" required>
+        {% for p in parts %}<option value="{{ p.id }}">{{ p.part_type|upper }} — {{ p.brand or '' }} {{ p.model or '' }} (stock: {{ p.quantity }})</option>{% endfor %}
+      </select>
+      <div class="grid2">
+        <div><label>Quantité</label><input name="quantity" type="number" value="1" min="1"></div>
+        <div><label>Notes</label><input name="notes" placeholder="Optionnel"></div>
+      </div>
+      <button style="margin-top:12px">Ajouter au dossier</button>
+    </form>
+    {% if intervention.used_parts %}
+    <table class="mini-table" style="margin-top:14px">
+      <thead><tr><th>Pièce</th><th>Qté</th><th>Notes</th></tr></thead>
+      <tbody>{% for up in intervention.used_parts %}<tr><td>{{ up.part.part_type }} {{ up.part.brand or '' }} {{ up.part.model or '' }}</td><td>{{ up.quantity }}</td><td class="muted">{{ up.notes or '' }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Photos + Signature -->
+<div class="grid2">
+  <div class="card">
+    <h2>Photos</h2>
+    <div class="photo-gallery">
+      {% for photo in intervention.photos %}
+      <figure class="photo-thumb">
+        <a href="/storage/{{ photo.file_path }}" target="_blank">
+          <img src="/storage/{{ photo.file_path }}" alt="{{ photo.phase }}">
+        </a>
+        <figcaption><strong>{% if photo.phase == 'before' %}Avant{% elif photo.phase == 'after' %}Après{% elif photo.phase == 'during' %}Pendant{% else %}{{ photo.phase }}{% endif %}</strong></figcaption>
+      </figure>
+      {% else %}
+      <div class="empty" style="grid-column:1/-1">Aucune photo ajoutée.</div>
+      {% endfor %}
+    </div>
+    <form action="/intervention/{{ intervention.id }}/photo" method="post" enctype="multipart/form-data">
+      <div class="grid2">
+        <div>
+          <label>Phase</label>
+          <select name="phase"><option value="before">Avant</option><option value="during">Pendant</option><option value="after">Après</option></select>
+        </div>
+        <div><label>Photo</label><input type="file" name="file" accept="image/*" required></div>
+      </div>
+      <button style="margin-top:12px">Ajouter photo</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Signature client</h2>
+    {% if intervention.signature_path %}
+    <img src="/storage/{{ intervention.signature_path }}" alt="Signature" class="sig-preview">
+    {% else %}
+    <canvas id="sigCanvas" class="sig-canvas"></canvas>
+    <form id="sigForm" action="/intervention/{{ intervention.id }}/signature" method="post" style="margin-top:10px">
+      <input type="hidden" name="signature_data" id="signature_data">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="button" onclick="clearSig()" class="btn btn-secondary">Effacer</button>
+        <button type="submit" onclick="return saveSig()">Enregistrer la signature</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const canvas = document.getElementById('sigCanvas');
+  if (canvas) {
+    canvas.width = canvas.offsetWidth || 520;
+    canvas.height = 180;
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    const pos = e => {
+      const r = canvas.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return { x: (t.clientX - r.left) * (canvas.width / r.width), y: (t.clientY - r.top) * (canvas.height / r.height) };
+    };
+    canvas.addEventListener('mousedown', e => { drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
+    canvas.addEventListener('mousemove', e => { if (!drawing) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); });
+    canvas.addEventListener('mouseup', () => drawing = false);
+    canvas.addEventListener('mouseleave', () => drawing = false);
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!drawing) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); });
+    canvas.addEventListener('touchend', () => drawing = false);
+    ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '#00a3ff';
+    window.clearSig = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
+    window.saveSig = () => { document.getElementById('signature_data').value = canvas.toDataURL('image/png'); return true; };
+  }
+</script>
+{% endblock %}

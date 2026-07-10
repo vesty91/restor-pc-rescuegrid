@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Tickets - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}◻{% endblock %}
+{% block breadcrumb %}Tickets SAV{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Tickets</h1>
+  <p>Suivi des demandes SAV et interventions en cours.</p>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Nouveau ticket</h2>
+    <form action="/tickets" method="post">
+      <label>Intervention</label>
+      <select name="intervention_id" required>
+        {% for i in interventions %}<option value="{{ i.id }}">#{{ i.id }} — {{ i.title }} ({{ i.client.name if i.client else '?' }})</option>{% endfor %}
+      </select>
+      <label>Titre</label>
+      <input name="title" required placeholder="Ex : Problème de démarrage">
+      <label>Description</label>
+      <textarea name="description" placeholder="Détails du problème…"></textarea>
+      <div class="grid2">
+        <div>
+          <label>Priorité</label>
+          <select name="priority">
+            <option value="low">Basse</option>
+            <option value="medium" selected>Moyenne</option>
+            <option value="high">Haute</option>
+            <option value="critical">Critique</option>
+          </select>
+        </div>
+        <div>
+          <label>Statut</label>
+          <select name="status">
+            <option value="open">Ouvert</option>
+            <option value="in_progress">En cours</option>
+            <option value="resolved">Résolu</option>
+            <option value="closed">Fermé</option>
+          </select>
+        </div>
+      </div>
+      <button style="margin-top:16px">Créer le ticket</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Tickets ({{ tickets|length }})</h2>
+    {% if tickets %}
+    <table>
+      <thead><tr><th>Titre</th><th>Client</th><th>Priorité</th><th>Statut</th><th>Date</th><th></th></tr></thead>
+      <tbody>
+        {% for t in tickets %}
+        <tr>
+          <td><strong>{{ t.title }}</strong></td>
+          <td>{% if t.client %}<a href="/client/{{ t.client.id }}">{{ t.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>
+            {% if t.priority == 'critical' %}<span class="pill err">Critique</span>
+            {% elif t.priority == 'high' %}<span class="pill" style="background:rgba(239,68,68,.1);color:var(--danger)">Haute</span>
+            {% elif t.priority == 'medium' %}<span class="pill draft">Moyenne</span>
+            {% else %}<span class="pill">Basse</span>{% endif %}
+          </td>
+          <td>
+            <span class="pill {{ t.status }}">
+              {% if t.status == 'open' %}Ouvert{% elif t.status == 'in_progress' %}En cours{% elif t.status == 'resolved' %}Résolu{% elif t.status == 'closed' %}Fermé{% else %}{{ t.status }}{% endif %}
+            </span>
+          </td>
+          <td>{{ t.created_at.strftime('%d/%m/%Y') }}</td>
+          <td>
+            <div class="action-menu">
+              <button class="action-menu-btn" type="button">⋯</button>
+              <div class="action-dropdown">
+                {% if t.intervention %}<a href="/intervention/{{ t.intervention.id }}">↗ Voir intervention</a>{% endif %}
+                <form action="/delete/ticket/{{ t.id }}" method="post" onsubmit="return confirm('Supprimer ce ticket ?')">
+                  <button class="drop-danger">🗑 Supprimer</button>
+                </form>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucun ticket pour le moment.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
