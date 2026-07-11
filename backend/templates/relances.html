@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Relances - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}⏰{% endblock %}
+{% block breadcrumb %}Relances{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Relances devis / factures</h1>
+  <p>Devis en attente de réponse et factures impayées après échéance.</p>
+</div>
+
+{% if request.query_params.get('mail') %}
+<div class="notice {% if request.query_params.get('mail') == 'sent' %}success{% elif request.query_params.get('mail') == 'error' %}error{% endif %}">
+  {% if request.query_params.get('mail') == 'sent' %}✓ Relance envoyée avec succès.
+  {% elif request.query_params.get('mail') == 'missing_client_email' %}⚠ Email client manquant — complète la fiche client avant l'envoi.
+  {% elif request.query_params.get('mail') == 'error' %}✗ Erreur SMTP — vérifie la configuration email dans .env.
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="grid2">
+  <div class="card">
+    <h2>Devis en retard ({{ quote_rows|length }})</h2>
+    {% if quote_rows %}
+    <table>
+      <thead><tr><th>N°</th><th>Client</th><th>Montant</th><th>Retard</th><th>Dernière relance</th><th></th></tr></thead>
+      <tbody>
+        {% for row in quote_rows %}
+        <tr>
+          <td><strong>{{ row.quote.quote_number }}</strong></td>
+          <td>{% if row.quote.client %}<a href="/client/{{ row.quote.client.id }}">{{ row.quote.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{{ "%.2f"|format(row.quote.amount) }} €</td>
+          <td><span class="pill err">{{ row.days_overdue }} j</span></td>
+          <td>{{ row.last_reminder.sent_at.strftime('%d/%m/%Y') if row.last_reminder else '—' }}</td>
+          <td>
+            <form action="/quote/{{ row.quote.id }}/remind" method="post" onsubmit="return confirm('Envoyer une relance pour ce devis ?')">
+              <button class="btn-sm">✉ Relancer</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucun devis en retard.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Factures impayées ({{ invoice_rows|length }})</h2>
+    {% if invoice_rows %}
+    <table>
+      <thead><tr><th>N°</th><th>Client</th><th>Montant</th><th>Retard</th><th>Dernière relance</th><th></th></tr></thead>
+      <tbody>
+        {% for row in invoice_rows %}
+        <tr>
+          <td><strong>{{ row.invoice.invoice_number }}</strong></td>
+          <td>{% if row.invoice.client %}<a href="/client/{{ row.invoice.client.id }}">{{ row.invoice.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{{ "%.2f"|format(row.invoice.total) }} €</td>
+          <td><span class="pill err">{{ row.days_overdue }} j</span></td>
+          <td>{{ row.last_reminder.sent_at.strftime('%d/%m/%Y') if row.last_reminder else '—' }}</td>
+          <td>
+            <form action="/invoice/{{ row.invoice.id }}/remind" method="post" onsubmit="return confirm('Envoyer une relance pour cette facture ?')">
+              <button class="btn-sm">✉ Relancer</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Aucune facture impayée après échéance.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

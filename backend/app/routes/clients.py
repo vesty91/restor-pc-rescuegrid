@@ -21,7 +21,7 @@ from ..database import get_session
 from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
 from ..helpers import paginate_query
-from ..models import Client, Intervention
+from ..models import Client, ClientAccount, Intervention
 
 router = APIRouter()
 _templates: Jinja2Templates | None = None
@@ -66,12 +66,14 @@ def client_detail(client_id: int, request: Request, session: Session = Depends(g
         .where(Intervention.client_id == client_id)
         .order_by(Intervention.created_at.desc())
     ).all()
+    client_account = session.scalars(select(ClientAccount).where(ClientAccount.client_id == client_id)).first()
     return _templates.TemplateResponse("client_detail.html", {
         "request": request,
         "user": user,
         "active_page": "clients",
         "client": client,
         "interventions": interventions,
+        "client_account": client_account,
     })
 
 

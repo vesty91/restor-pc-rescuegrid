@@ -10,17 +10,19 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_session
 from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
-from ..helpers import paginate_query
+from ..helpers import _company_info, paginate_query
 from ..models import Intervention, Invoice
 
 logger = logging.getLogger(__name__)
@@ -140,3 +142,106 @@ def delete_invoice(invoice_id: int, request: Request, session: Session = Depends
         session.delete(invoice)
         session.commit()
     return RedirectResponse("/invoices", status_code=303)
+
+
+# ── Comptabilité auto-entrepreneur (registre des recettes) ────────────────────
+# Régime micro-entrepreneur : la comptabilité se fait sur encaissements (recettes
+# effectivement perçues), pas sur facturation. On exporte donc les factures dont
+# le statut est "paid" et dont la date d'encaissement (paid_at) tombe dans la
+# période demandée — cela correspond au livre de recettes exigé par la loi.
+
+def _period_bounds(from_str: str, to_str: str) -> tuple[datetime, datetime, str, str]:
+    """Normalise les bornes de période, par défaut le mois civil en cours."""
+    now = datetime.now(timezone.utc)
+    default_from = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    default_to = now
+    try:
+        period_from = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if from_str else default_from
+    except ValueError:
+        period_from = default_from
+    try:
+        period_to = (datetime.strptime(to_str, "%Y-%m-%d") + timedelta(days=1) - timedelta(seconds=1)).replace(tzinfo=timezone.utc) if to_str else default_to
+    except ValueError:
+        period_to = default_to
+    return period_from, period_to, period_from.strftime("%Y-%m-%d"), period_to.strftime("%Y-%m-%d")
+
+
+def _paid_invoices_in_period(session: Session, period_from: datetime, period_to: datetime) -> list[Invoice]:
+    return session.scalars(
+        select(Invoice)
+        .where(Invoice.status == "paid")
+        .where(Invoice.paid_at.is_not(None))
+        .where(Invoice.paid_at >= period_from)
+        .where(Invoice.paid_at <= period_to)
+        .order_by(Invoice.paid_at.asc())
+    ).all()
+
+
+@router.get("/comptabilite", response_class=HTMLResponse)
+def comptabilite_page(
+    request: Request,
+    date_from: str = "",
+    date_to: str = "",
+    session: Session = Depends(get_session),
+):
+    user, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
+    period_from, period_to, from_label, to_label = _period_bounds(date_from, date_to)
+    invoices = _paid_invoices_in_period(session, period_from, period_to)
+    total = sum(float(i.total or 0) for i in invoices)
+    return _templates.TemplateResponse("comptabilite.html", {
+        "request": request,
+        "user": user,
+        "active_page": "comptabilite",
+        "invoices": invoices,
+        "total": total,
+        "date_from": from_label,
+        "date_to": to_label,
+        "company": _company_info(),
+    })
+
+
+@router.get("/export/comptable.xlsx")
+def export_comptable_xlsx(
+    request: Request,
+    date_from: str = "",
+    date_to: str = "",
+    session: Session = Depends(get_session),
+):
+    user, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
+    period_from, period_to, from_label, to_label = _period_bounds(date_from, date_to)
+    invoices = _paid_invoices_in_period(session, period_from, period_to)
+    company = _company_info()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Registre des recettes"
+    ws.append([company["name"], "", "", ""])
+    ws.append([company["siret"], "", "", ""])
+    ws.append([f"Registre des recettes du {from_label} au {to_label}", "", "", ""])
+    ws.append([])
+    ws.append(["Date encaissement", "N° facture", "Client", "Montant (€)", "Mode de paiement"])
+    for inv in invoices:
+        ws.append([
+            inv.paid_at.strftime("%d/%m/%Y") if inv.paid_at else "",
+            inv.invoice_number,
+            inv.client.name if inv.client else "",
+            round(float(inv.total or 0), 2),
+            inv.payment_method or "",
+        ])
+    total = sum(float(i.total or 0) for i in invoices)
+    ws.append([])
+    ws.append(["", "", "TOTAL PÉRIODE", round(total, 2), ""])
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"registre-recettes_{from_label}_{to_label}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

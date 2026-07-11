@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Planning - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}📅{% endblock %}
+{% block breadcrumb %}Planning{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Planning</h1>
+  <p>{{ total_items }} rendez-vous — atelier et interventions à domicile.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;padding:14px 18px">
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <a href="/planning?range_filter=week" class="btn {{ 'btn-secondary' if range_filter != 'week' else '' }} btn-sm">Cette semaine</a>
+    <a href="/planning?range_filter=next_week" class="btn {{ 'btn-secondary' if range_filter != 'next_week' else '' }} btn-sm">Semaine prochaine</a>
+    <a href="/planning?range_filter=upcoming" class="btn {{ 'btn-secondary' if range_filter != 'upcoming' else '' }} btn-sm">À venir</a>
+    <a href="/planning?range_filter=all" class="btn {{ 'btn-secondary' if range_filter != 'all' else '' }} btn-sm">Tout</a>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Nouveau rendez-vous</h2>
+    <form action="/planning" method="post">
+      <label>Titre</label>
+      <input name="title" required placeholder="Ex : Récupération PC portable">
+      <label>Client</label>
+      <select name="client_id">
+        <option value="0">— Aucun —</option>
+        {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+      </select>
+      <label>Intervention liée</label>
+      <select name="intervention_id">
+        <option value="0">— Aucune —</option>
+        {% for i in interventions %}<option value="{{ i.id }}">#{{ i.id }} — {{ i.title }}</option>{% endfor %}
+      </select>
+      <label>Technicien</label>
+      <select name="technician_id">
+        <option value="0">— Non assigné —</option>
+        {% for t in technicians %}<option value="{{ t.id }}">{{ t.full_name or t.username }}</option>{% endfor %}
+      </select>
+      <div class="grid2">
+        <div><label>Début</label><input name="start_at" type="datetime-local" required></div>
+        <div><label>Fin (optionnel)</label><input name="end_at" type="datetime-local"></div>
+      </div>
+      <label>Notes</label>
+      <textarea name="notes" rows="2" placeholder="Détails, adresse, précisions…"></textarea>
+      <button style="margin-top:14px">Créer le rendez-vous</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Agenda</h2>
+    {% if grouped %}
+      {% for day_group in grouped %}
+      <div style="margin-bottom:18px">
+        <h3 style="margin:0 0 8px;color:var(--muted);font-size:13px;text-transform:uppercase">{{ day_group.day.strftime('%A %d/%m/%Y') }}</h3>
+        <table>
+          <thead><tr><th>Heure</th><th>Titre</th><th>Client</th><th>Technicien</th><th>Statut</th><th></th></tr></thead>
+          <tbody>
+            {% for a in day_group.entries %}
+            <tr>
+              <td style="white-space:nowrap">{{ a.start_at.strftime('%H:%M') }}{% if a.end_at %} - {{ a.end_at.strftime('%H:%M') }}{% endif %}</td>
+              <td><strong>{{ a.title }}</strong>{% if a.notes %}<br><span class="hint">{{ a.notes }}</span>{% endif %}</td>
+              <td>{% if a.client %}<a href="/client/{{ a.client.id }}">{{ a.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+              <td>{{ a.technician.full_name or a.technician.username if a.technician else '—' }}</td>
+              <td>
+                <form action="/planning/{{ a.id }}/status" method="post">
+                  <select name="status" onchange="this.form.submit()">
+                    {% for st in appointment_statuses %}<option value="{{ st }}" {% if a.status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}
+                  </select>
+                </form>
+              </td>
+              <td>
+                <form action="/delete/appointment/{{ a.id }}" method="post" onsubmit="return confirm('Supprimer ce rendez-vous ?')">
+                  <button class="btn-sm">✕</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+      {% include "_pagination.html" %}
+    {% else %}
+    <div class="empty">Aucun rendez-vous sur cette période.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

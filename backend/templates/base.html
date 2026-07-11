@@ -270,6 +270,9 @@
       <a href="/interventions" class="{{ 'active' if active_page == 'interventions' else '' }}">
         <span class="nav-left"><span class="ico">⬡</span>Interventions</span>
       </a>
+      <a href="/planning" class="{{ 'active' if active_page == 'planning' else '' }}">
+        <span class="nav-left"><span class="ico">📅</span>Planning</span>
+      </a>
       <a href="/clients" class="{{ 'active' if active_page == 'clients' else '' }}">
         <span class="nav-left"><span class="ico">👥</span>Clients</span>
       </a>
@@ -287,8 +290,15 @@
       <a href="/invoices" class="{{ 'active' if active_page == 'invoices' else '' }}">
         <span class="nav-left"><span class="ico">▥</span>Factures</span>
       </a>
+      <a href="/relances" class="{{ 'active' if active_page == 'relances' else '' }}">
+        <span class="nav-left"><span class="ico">⏰</span>Relances</span>
+        {% set n = overdue_count() %}{% if n %}<span class="nav-badge">{{ n }}</span>{% endif %}
+      </a>
       <a href="/parts" class="{{ 'active' if active_page == 'parts' else '' }}">
         <span class="nav-left"><span class="ico">⚙</span>Pièces détachées</span>
+      </a>
+      <a href="/comptabilite" class="{{ 'active' if active_page == 'comptabilite' else '' }}">
+        <span class="nav-left"><span class="ico">€</span>Comptabilité</span>
       </a>
 
       <div class="nav-section">Outils</div>

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Espace client - Restor-PC</title>
+  <style>
+    :root{color-scheme:dark;--bg:#040b14;--card:#0d1b2f;--line:#1b3656;--text:#eef7ff;--muted:#93a9c5;--blue:#0a84ff;--blue2:#00a3ff;--danger:#ef4444;}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:Segoe UI,Inter,Arial,sans-serif;color:var(--text);min-height:100vh;
+      display:flex;align-items:center;justify-content:center;
+      background:
+        radial-gradient(circle at 20% 10%,rgba(10,132,255,.18),transparent 35%),
+        radial-gradient(circle at 80% 80%,rgba(0,163,255,.10),transparent 35%),
+        linear-gradient(135deg,#020812 0%,#06101d 50%,#02050b 100%);
+    }
+    .login-wrap{width:min(400px,94vw)}
+    .logo-area{text-align:center;margin-bottom:28px}
+    .logo-fallback{font-size:26px;font-weight:1000;color:var(--blue2);letter-spacing:-.03em}
+    .logo-sub{color:var(--muted);font-size:13px;margin-top:6px}
+    .card{
+      background:linear-gradient(180deg,rgba(13,27,47,.96),rgba(7,19,33,.98));
+      border:1px solid var(--line);border-radius:18px;padding:28px 26px;
+      box-shadow:0 22px 60px rgba(0,0,0,.5);
+    }
+    .card h2{font-size:18px;margin-bottom:4px;color:var(--text)}
+    .card .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+    label{display:block;margin-top:14px;margin-bottom:5px;color:#a8bdd8;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+    input{
+      width:100%;background:#081426;border:1px solid var(--line);color:var(--text);
+      border-radius:11px;padding:11px 13px;font:inherit;font-size:14px;outline:none;
+    }
+    input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.18)}
+    button,.oauth-btn{
+      margin-top:20px;width:100%;border:0;
+      background:linear-gradient(135deg,#0875ff,#005bd9);
+      color:#fff;font:inherit;font-weight:800;font-size:15px;
+      padding:12px;border-radius:12px;cursor:pointer;
+      box-shadow:0 10px 26px rgba(10,132,255,.22);transition:opacity .15s;
+      display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;
+    }
+    button:hover,.oauth-btn:hover{opacity:.88}
+    .oauth-btn.github{background:linear-gradient(135deg,#333,#111)}
+    .oauth-btn.google{background:linear-gradient(135deg,#ea4335,#c5221f)}
+    .error{background:rgba(239,68,68,.12);color:var(--danger);border:1px solid rgba(239,68,68,.22);
+      padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:13px}
+    .sep{display:flex;align-items:center;gap:10px;margin:20px 0;color:var(--muted);font-size:12px}
+    .sep::before,.sep::after{content:"";flex:1;height:1px;background:var(--line)}
+    .hint{margin-top:16px;font-size:12px;color:var(--muted);text-align:center;border-top:1px solid rgba(255,255,255,.07);padding-top:14px}
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="logo-area">
+      <div class="logo-fallback">RESTOR-PC</div>
+      <div class="logo-sub">Espace client — suivi de vos interventions</div>
+    </div>
+    <div class="card">
+      <h2>Connexion espace client</h2>
+      <div class="sub">Devis, factures et suivi de vos interventions</div>
+      {% if error %}
+      <div class="error">
+        {% if error == 'unknown_account' %}Compte non reconnu, contactez l'atelier.
+        {% elif error == 'oauth_failed' or error == 'oauth_state' %}Connexion via ce fournisseur impossible. Réessayez.
+        {% elif error == 'oauth_unavailable' %}Cette méthode de connexion n'est pas disponible actuellement.
+        {% else %}{{ error }}{% endif %}
+      </div>
+      {% endif %}
+      {% set qerror = request.query_params.get('error') %}
+      {% if qerror and not error %}
+      <div class="error">
+        {% if qerror == 'unknown_account' %}Compte non reconnu, contactez l'atelier.
+        {% elif qerror == 'oauth_failed' or qerror == 'oauth_state' %}Connexion via ce fournisseur impossible. Réessayez.
+        {% elif qerror == 'oauth_unavailable' %}Cette méthode de connexion n'est pas disponible actuellement.
+        {% else %}{{ qerror }}{% endif %}
+      </div>
+      {% endif %}
+      <form method="post" action="/client/login">
+        <label>Email</label>
+        <input name="email" type="email" required autofocus autocomplete="username">
+        <label>Mot de passe</label>
+        <input name="password" type="password" required autocomplete="current-password">
+        <button>Se connecter</button>
+      </form>
+      {% if google_enabled or github_enabled %}
+      <div class="sep">ou</div>
+      {% if google_enabled %}<a class="oauth-btn google" href="/client/auth/google">Se connecter avec Google</a>{% endif %}
+      {% if github_enabled %}<a class="oauth-btn github" href="/client/auth/github">Se connecter avec GitHub</a>{% endif %}
+      {% endif %}
+      <div class="hint">Un compte a été créé pour vous par l'atelier Restor-PC.<br>Identifiants perdus ? Contactez-nous.</div>
+    </div>
+  </div>
+</body>
+</html>

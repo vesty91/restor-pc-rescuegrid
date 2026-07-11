@@ -7,6 +7,15 @@
 {% if request.query_params.get('mail') == 'missing_client_email' %}
 <div class="notice error">⚠ Email client manquant — renseigne l'adresse email dans la fiche avant l'envoi.</div>
 {% endif %}
+{% if request.query_params.get('portal') == 'enabled' %}
+<div class="notice success">✓ Espace client activé — identifiants envoyés par email.</div>
+{% elif request.query_params.get('portal') == 'disabled' %}
+<div class="notice">Espace client désactivé.</div>
+{% elif request.query_params.get('portal') == 'reset' %}
+<div class="notice success">✓ Mot de passe réinitialisé — nouveau mot de passe envoyé par email.</div>
+{% elif request.query_params.get('portal') == 'email_taken' %}
+<div class="notice error">⚠ Cet email est déjà utilisé par un autre compte espace client.</div>
+{% endif %}
 
 <div class="page-header">
   <h1>{{ client.name }}</h1>
@@ -36,6 +45,46 @@
       <button style="margin-top:16px">Enregistrer</button>
     </form>
     <p class="hint" style="margin-top:10px">Ces informations sont reprises dans les devis, factures et emails.</p>
+  </div>
+
+  <div class="card">
+    <h2>Espace client</h2>
+    {% if client_account %}
+      <p>
+        Statut :
+        {% if client_account.is_active %}<span class="pill" style="background:#dffdea;color:#056b3b">Actif</span>
+        {% else %}<span class="pill" style="background:#fee2e2;color:#991b1b">Désactivé</span>{% endif %}
+      </p>
+      <p>Email de connexion : <strong>{{ client_account.email }}</strong></p>
+      <p>Identités OAuth liées :
+        {% if client_account.oauth_identities %}
+          {% for oid in client_account.oauth_identities %}<span class="pill">{{ oid.provider }}</span>{% endfor %}
+        {% else %}<span class="hint">Aucune — mot de passe uniquement</span>{% endif %}
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+        <form method="post" action="/client/{{ client.id }}/portal/reset-password">
+          <button class="btn btn-secondary">Réinitialiser le mot de passe</button>
+        </form>
+        {% if client_account.is_active %}
+        <form method="post" action="/client/{{ client.id }}/portal/disable">
+          <button class="btn-sm">Désactiver l'accès</button>
+        </form>
+        {% else %}
+        <form method="post" action="/client/{{ client.id }}/portal/enable">
+          <input type="hidden" name="email" value="{{ client_account.email }}">
+          <button class="btn btn-secondary">Réactiver l'accès</button>
+        </form>
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="hint">Ce client n'a pas encore accès à l'espace client.</p>
+      <form method="post" action="/client/{{ client.id }}/portal/enable">
+        <label>Email de connexion</label>
+        <input type="email" name="email" value="{{ client.email or '' }}" required placeholder="client@email.fr">
+        <button style="margin-top:12px">Activer l'espace client</button>
+      </form>
+    {% endif %}
+    <p class="hint" style="margin-top:10px">Un mot de passe temporaire est généré et envoyé par email lors de l'activation ou de la réinitialisation.</p>
   </div>
 
   <div class="card">

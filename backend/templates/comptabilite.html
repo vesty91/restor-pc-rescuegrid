@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Comptabilité - Restor-PC RescueGrid{% endblock %}
+{% block page_icon %}€{% endblock %}
+{% block breadcrumb %}Comptabilité{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Comptabilité</h1>
+  <p>Registre des recettes (encaissements) — régime auto-entrepreneur, {{ company.vat }}.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;padding:14px 18px">
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div style="min-width:160px">
+      <label style="margin-top:0">Du</label>
+      <input name="date_from" type="date" value="{{ date_from }}">
+    </div>
+    <div style="min-width:160px">
+      <label style="margin-top:0">Au</label>
+      <input name="date_to" type="date" value="{{ date_to }}">
+    </div>
+    <button style="height:42px;align-self:flex-end">Filtrer</button>
+    <a href="/export/comptable.xlsx?date_from={{ date_from }}&date_to={{ date_to }}" class="btn btn-secondary" style="height:42px;align-self:flex-end;display:flex;align-items:center">⬇ Télécharger le registre (.xlsx)</a>
+  </form>
+</div>
+
+<div class="kpi-grid" style="margin-bottom:16px">
+  <div class="kpi"><span>Période</span><strong style="font-size:15px">{{ date_from }} → {{ date_to }}</strong></div>
+  <div class="kpi"><span>Factures encaissées</span><strong>{{ invoices|length }}</strong></div>
+  <div class="kpi"><span>Total encaissé</span><strong>{{ "%.2f"|format(total) }} €</strong></div>
+</div>
+
+<div class="card">
+  <h2>Détail des encaissements</h2>
+  {% if invoices %}
+  <table>
+    <thead><tr><th>Date encaissement</th><th>N°</th><th>Client</th><th>Montant</th><th>Mode de paiement</th></tr></thead>
+    <tbody>
+      {% for inv in invoices %}
+      <tr>
+        <td>{{ inv.paid_at.strftime('%d/%m/%Y') if inv.paid_at else '—' }}</td>
+        <td><a href="/invoice/{{ inv.id }}/pdf" target="_blank"><strong>{{ inv.invoice_number }}</strong></a></td>
+        <td>{% if inv.client %}<a href="/client/{{ inv.client.id }}">{{ inv.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td><strong>{{ "%.2f"|format(inv.total) }} €</strong></td>
+        <td>{{ inv.payment_method or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><td colspan="3" style="text-align:right"><strong>Total période</strong></td><td><strong>{{ "%.2f"|format(total) }} €</strong></td><td></td></tr>
+    </tfoot>
+  </table>
+  {% else %}
+  <div class="empty">Aucun encaissement sur cette période.</div>
+  {% endif %}
+  <p class="hint" style="margin-top:12px">Registre des recettes simplifié — à conserver pour la déclaration URSSAF / impôts (régime micro-entrepreneur, comptabilité de trésorerie).</p>
+</div>
+{% endblock %}

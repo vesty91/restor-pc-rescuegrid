@@ -278,6 +278,167 @@ def test_create_quote() -> None:
     record("POST /quotes", r.status_code == 303)
 
 
+def test_comptabilite_page() -> None:
+    r = client.get("/comptabilite")
+    record("GET /comptabilite", r.status_code == 200 and "Comptabilité" in r.text, f"status={r.status_code}")
+
+
+def test_comptabilite_requires_admin() -> None:
+    c = TestClient(app)
+    r = c.get("/comptabilite", follow_redirects=False)
+    record("GET /comptabilite sans auth -> redirect", r.status_code == 303)
+
+
+def test_export_comptable_xlsx() -> None:
+    r = client.get("/export/comptable.xlsx")
+    record(
+        "GET /export/comptable.xlsx",
+        r.status_code == 200 and "spreadsheetml" in r.headers.get("content-type", ""),
+        r.headers.get("content-type", ""),
+    )
+
+
+def test_planning_crud() -> None:
+    from datetime import datetime, timedelta, timezone
+    start = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")
+    r = client.post("/planning", data={
+        "title": "RDV Test Planning",
+        "client_id": "0",
+        "intervention_id": "0",
+        "technician_id": "0",
+        "start_at": start,
+    }, follow_redirects=False)
+    record("POST /planning création RDV", r.status_code == 303, f"status={r.status_code}")
+
+    from app.database import SessionLocal
+    from app.models import Appointment
+    from sqlalchemy import select
+    with SessionLocal() as session:
+        appointment = session.scalars(
+            select(Appointment).where(Appointment.title == "RDV Test Planning").order_by(Appointment.id.desc())
+        ).first()
+    if not appointment:
+        record("GET /planning liste", False, "rendez-vous introuvable après création")
+        return
+    aid = appointment.id
+
+    r = client.get("/planning?range_filter=all")
+    record("GET /planning liste", r.status_code == 200 and "RDV Test Planning" in r.text, f"status={r.status_code}")
+
+    r = client.post(f"/planning/{aid}/status", data={"status": "confirmed"}, follow_redirects=False)
+    record("POST /planning/{id}/status", r.status_code == 303, f"status={r.status_code}")
+
+    r = client.post(f"/delete/appointment/{aid}", follow_redirects=False)
+    record("POST /delete/appointment admin", r.status_code == 303, f"status={r.status_code}")
+
+
+def test_planning_requires_auth() -> None:
+    c = TestClient(app)
+    r = c.get("/planning", follow_redirects=False)
+    record("GET /planning sans auth -> redirect", r.status_code == 303)
+
+
+def test_relances_page() -> None:
+    r = client.get("/relances")
+    record("GET /relances", r.status_code == 200 and "Relances" in r.text, f"status={r.status_code}")
+
+
+def test_reminders_flow() -> None:
+    from datetime import datetime, timedelta, timezone
+    from app.database import SessionLocal
+    from app.models import Client, Intervention, Invoice, Quote
+    from sqlalchemy import select
+
+    with SessionLocal() as session:
+        client_row = Client(name="Client Relances", email="relances@example.com")
+        session.add(client_row)
+        session.commit()
+        intervention = Intervention(client_id=client_row.id, title="Intervention relances")
+        session.add(intervention)
+        session.commit()
+        past = datetime.now(timezone.utc) - timedelta(days=5)
+        quote = Quote(
+            intervention_id=intervention.id, client_id=client_row.id, quote_number="DEV-TESTRELANCE-0001",
+            amount=100.0, tax=0.0, total=100.0, status="sent", valid_until=past,
+        )
+        invoice = Invoice(
+            intervention_id=intervention.id, client_id=client_row.id, invoice_number="INV-TESTRELANCE-0001",
+            amount=150.0, tax=0.0, total=150.0, status="issued", due_date=past,
+        )
+        session.add_all([quote, invoice])
+        session.commit()
+        quote_id, invoice_id = quote.id, invoice.id
+
+    r = client.get("/relances")
+    record(
+        "GET /relances liste devis/factures en retard",
+        r.status_code == 200 and "DEV-TESTRELANCE-0001" in r.text and "INV-TESTRELANCE-0001" in r.text,
+    )
+
+    r = client.post(f"/quote/{quote_id}/remind", follow_redirects=False)
+    record("POST /quote/{id}/remind", r.status_code == 303, f"status={r.status_code} location={r.headers.get('location')}")
+
+    r = client.post(f"/invoice/{invoice_id}/remind", follow_redirects=False)
+    record("POST /invoice/{id}/remind", r.status_code == 303, f"status={r.status_code} location={r.headers.get('location')}")
+
+
+def test_client_portal_flow() -> None:
+    from app.auth import hash_password
+    from app.database import SessionLocal
+    from app.models import Client, ClientAccount
+    from sqlalchemy import select
+
+    r = client.post("/clients", data={"name": "Client Portail Test", "email": "portail@example.com"}, follow_redirects=False)
+    record("POST /clients (client portail)", r.status_code == 303)
+
+    with SessionLocal() as session:
+        client_row = session.scalars(select(Client).where(Client.name == "Client Portail Test")).first()
+    if not client_row:
+        record("Setup client portail", False, "client introuvable")
+        return
+    client_id = client_row.id
+
+    r = client.post(f"/client/{client_id}/portal/enable", data={"email": "portail@example.com"}, follow_redirects=False)
+    record("POST /client/{id}/portal/enable (admin)", r.status_code == 303, f"status={r.status_code}")
+
+    # Le mot de passe temporaire est envoyé par email (SMTP désactivé en test) :
+    # on le fixe directement en base pour tester le flux de connexion complet.
+    known_password = "PortailTest2026!"
+    with SessionLocal() as session:
+        account = session.scalars(select(ClientAccount).where(ClientAccount.client_id == client_id)).first()
+        if not account:
+            record("ClientAccount créé", False, "aucun compte espace client créé")
+            return
+        account.hashed_password = hash_password(known_password)
+        session.commit()
+    record("ClientAccount créé", True)
+
+    r = client.get("/client/login")
+    record("GET /client/login", r.status_code == 200 and "Espace client" in r.text)
+
+    anon = TestClient(app)
+    r = anon.post("/client/login", data={"email": "portail@example.com", "password": "wrong-password"})
+    record("POST /client/login mot de passe invalide", r.status_code == 200 and "incorrect" in r.text.lower())
+
+    r = anon.post("/client/login", data={"email": "portail@example.com", "password": known_password}, follow_redirects=False)
+    record("POST /client/login réussi", r.status_code == 303 and "client_token" in r.cookies, f"status={r.status_code}")
+
+    r = anon.get("/client/portal")
+    record("GET /client/portal authentifié", r.status_code == 200 and "Client Portail Test" in r.text, f"status={r.status_code}")
+
+    r = client.post(f"/client/{client_id}/portal/disable", follow_redirects=False)
+    record("POST /client/{id}/portal/disable (admin)", r.status_code == 303)
+
+    r = anon.get("/client/portal", follow_redirects=False)
+    record("GET /client/portal après désactivation -> redirect login", r.status_code == 303 and r.headers.get("location") == "/client/login")
+
+
+def test_client_portal_requires_auth() -> None:
+    c = TestClient(app)
+    r = c.get("/client/portal", follow_redirects=False)
+    record("GET /client/portal sans auth -> redirect", r.status_code == 303 and r.headers.get("location") == "/client/login")
+
+
 def main() -> int:
     print("=== Tests Restor-PC RescueGrid ===\n")
     test_health()
@@ -301,6 +462,15 @@ def main() -> int:
     test_intervention_detail()
     test_v10_pages()
     test_create_quote()
+    test_comptabilite_requires_admin()
+    test_comptabilite_page()
+    test_export_comptable_xlsx()
+    test_planning_requires_auth()
+    test_planning_crud()
+    test_relances_page()
+    test_reminders_flow()
+    test_client_portal_requires_auth()
+    test_client_portal_flow()
     test_delete_requires_admin()
     test_invalid_login()
 

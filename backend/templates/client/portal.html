@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Espace client - Restor-PC</title>
+  <style>
+    :root{color-scheme:dark;--bg:#040b14;--card:#0d1b2f;--line:#1b3656;--text:#eef7ff;--muted:#93a9c5;--blue:#0a84ff;--blue2:#00a3ff;--success:#5df2a3;--warning:#ffb020;}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Segoe UI,Inter,Arial,sans-serif;color:var(--text);min-height:100vh;
+      background:radial-gradient(circle at 18% 0%,rgba(10,132,255,.16),transparent 28%),
+        radial-gradient(circle at 80% 10%,rgba(0,163,255,.10),transparent 32%),
+        linear-gradient(135deg,#020812 0%,#06101d 44%,#02050b 100%);}
+    a{color:var(--blue2);text-decoration:none;font-weight:700}
+    a:hover{text-decoration:underline}
+    .top{display:flex;align-items:center;justify-content:space-between;padding:22px 32px;border-bottom:1px solid var(--line)}
+    .brand{font-size:20px;font-weight:1000;color:var(--blue2)}
+    .main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
+    .card{border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,rgba(11,23,40,.96),rgba(5,13,24,.96));padding:22px;box-shadow:0 22px 60px rgba(0,0,0,.4);margin-bottom:20px}
+    .card h2{margin:0 0 14px;font-size:19px}
+    table{width:100%;border-collapse:collapse}
+    th,td{text-align:left;border-bottom:1px solid rgba(147,169,197,.14);padding:11px 8px;font-size:14px}
+    th{color:var(--muted);font-size:11px;text-transform:uppercase}
+    .pill{display:inline-flex;border-radius:999px;padding:4px 10px;font-weight:800;font-size:12px;background:#0d5cae33;color:var(--blue2)}
+    .empty{border:1px dashed var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+    .kpi{border:1px solid var(--line);border-radius:14px;padding:16px;background:#081426}
+    .kpi span{display:block;color:var(--muted);font-size:12px;text-transform:uppercase}
+    .kpi strong{display:block;font-size:26px;margin-top:6px}
+    @media(max-width:760px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand">RESTOR-PC — Espace client</div>
+    <div><span style="color:var(--muted)">{{ client.name }}</span> · <a href="/client/logout">Déconnexion</a></div>
+  </div>
+  <div class="main">
+    <div class="kpi-grid">
+      <div class="kpi"><span>Interventions</span><strong>{{ interventions|length }}</strong></div>
+      <div class="kpi"><span>Devis</span><strong>{{ quotes|length }}</strong></div>
+      <div class="kpi"><span>Factures</span><strong>{{ invoices|length }}</strong></div>
+      <div class="kpi"><span>RDV à venir</span><strong>{{ upcoming_appointments|length }}</strong></div>
+    </div>
+
+    <div class="card">
+      <h2>Vos interventions</h2>
+      {% if interventions %}
+      <table>
+        <thead><tr><th>Date</th><th>Titre</th><th>Score santé</th><th>Statut</th></tr></thead>
+        <tbody>
+          {% for i in interventions %}
+          <tr>
+            <td>{{ i.created_at.strftime('%d/%m/%Y') }}</td>
+            <td>{{ i.title }}</td>
+            <td>{{ i.health_score if i.health_score is not none else '—' }}/100</td>
+            <td><span class="pill">{{ i.status }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<div class="empty">Aucune intervention pour le moment.</div>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Vos devis</h2>
+      {% if quotes %}
+      <table>
+        <thead><tr><th>N°</th><th>Date</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          {% for q in quotes %}
+          <tr>
+            <td><strong>{{ q.quote_number }}</strong></td>
+            <td>{{ q.created_at.strftime('%d/%m/%Y') }}</td>
+            <td>{{ "%.2f"|format(q.amount) }} €</td>
+            <td><span class="pill">{{ q.status }}</span></td>
+            <td><a href="/client/quote/{{ q.id }}/pdf" target="_blank">Voir le PDF →</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<div class="empty">Aucun devis pour le moment.</div>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Vos factures</h2>
+      {% if invoices %}
+      <table>
+        <thead><tr><th>N°</th><th>Date</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          {% for inv in invoices %}
+          <tr>
+            <td><strong>{{ inv.invoice_number }}</strong></td>
+            <td>{{ inv.created_at.strftime('%d/%m/%Y') }}</td>
+            <td>{{ "%.2f"|format(inv.amount) }} €</td>
+            <td><span class="pill">{{ inv.status }}</span></td>
+            <td><a href="/client/invoice/{{ inv.id }}/pdf" target="_blank">Voir le PDF →</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<div class="empty">Aucune facture pour le moment.</div>{% endif %}
+    </div>
+
+    {% if upcoming_appointments %}
+    <div class="card">
+      <h2>Rendez-vous à venir</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Titre</th><th>Statut</th></tr></thead>
+        <tbody>
+          {% for a in upcoming_appointments %}
+          <tr>
+            <td>{{ a.start_at.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td>{{ a.title }}</td>
+            <td><span class="pill">{{ a.status }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</body>
+</html>

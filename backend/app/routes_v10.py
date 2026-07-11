@@ -33,11 +33,75 @@ from sqlalchemy.orm import Session
 from .auth import get_admin_or_redirect, get_user_or_redirect, hash_password, log_activity, validate_password_strength
 from .database import get_session
 from .helpers import generate_ai_summary, quote_html, invoice_html, paginate_query, render_document_pdf, try_pdf_response
-from .models import ActivityLog, Client, Intervention, InterventionPart, InterventionPhoto, Invoice, Part, Quote, Ticket, User
+from .models import ActivityLog, Client, Intervention, InterventionPart, InterventionPhoto, Invoice, Part, Quote, Reminder, Ticket, User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _smtp_config() -> dict:
+    """Configuration SMTP unifiée, compatible Infomaniak et anciens noms SMTP_*.
+
+    Fonction module-level (pas dans la closure de init_v10_routes) afin d'être
+    réutilisable par d'autres modules (ex: routes/client_portal.py pour l'email
+    d'activation de l'espace client) sans dépendre de l'initialisation des routes.
+    """
+    return {
+        "enabled": (os.getenv("MAIL_ENABLED") or "true").lower() in {"1", "true", "yes", "on"},
+        "host": os.getenv("SMTP_HOST") or os.getenv("MAIL_SERVER") or "mail.infomaniak.com",
+        "port": int(os.getenv("SMTP_PORT") or os.getenv("MAIL_PORT") or "587"),
+        "user": os.getenv("SMTP_USER") or os.getenv("MAIL_USERNAME") or "contact@restor-pc.fr",
+        "password": os.getenv("SMTP_PASSWORD") or os.getenv("MAIL_PASSWORD") or "",
+        "sender": os.getenv("SMTP_SENDER") or os.getenv("MAIL_DEFAULT_SENDER") or os.getenv("MAIL_USERNAME") or "contact@restor-pc.fr",
+        "from_name": os.getenv("MAIL_FROM_NAME") or "RESTOR-PC",
+        "use_ssl": (os.getenv("SMTP_SSL") or os.getenv("MAIL_USE_SSL") or "").lower() in {"1", "true", "yes", "on"},
+        "use_tls": (os.getenv("SMTP_TLS") or os.getenv("MAIL_USE_TLS") or "true").lower() in {"1", "true", "yes", "on"},
+    }
+
+
+def send_document_email(
+    *,
+    to_email: str,
+    subject: str,
+    body: str,
+    html_attachment: str,
+    attachment_name: str,
+) -> tuple[bool, str]:
+    """Envoi SMTP Infomaniak. Attache un PDF si wkhtmltopdf est installé, sinon un HTML imprimable.
+
+    Fonction module-level partagée (routes_v10.py et routes/client_portal.py).
+    """
+    cfg = _smtp_config()
+    if not cfg["enabled"] or not cfg["password"]:
+        return False, "smtp_not_configured"
+
+    payload, maintype, subtype, final_name = render_document_pdf(html_attachment, attachment_name)
+
+    msg = EmailMessage()
+    msg["From"] = formataddr((cfg["from_name"], cfg["sender"]))
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg["Reply-To"] = cfg["sender"]
+    msg.set_content(body)
+    msg.add_attachment(payload, maintype=maintype, subtype=subtype, filename=final_name)
+
+    try:
+        if cfg["use_ssl"]:
+            with smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=30) as smtp:
+                smtp.login(cfg["user"], cfg["password"])
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(cfg["host"], cfg["port"], timeout=30) as smtp:
+                smtp.ehlo()
+                if cfg["use_tls"]:
+                    smtp.starttls()
+                    smtp.ehlo()
+                smtp.login(cfg["user"], cfg["password"])
+                smtp.send_message(msg)
+        return True, "sent_pdf" if subtype == "pdf" else "sent_html_fallback"
+    except Exception as exc:
+        return False, f"smtp_error:{exc}"
 
 
 def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: Path, sanitize_filename, intervention_dir_fn, resolve_storage_path):
@@ -182,59 +246,9 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
         return try_pdf_response(quote_html(quote), f"{quote.quote_number}.pdf")
 
 
-    def _smtp_config() -> dict:
-        """Configuration SMTP unifiée, compatible Infomaniak et anciens noms SMTP_*."""
-        return {
-            "enabled": (os.getenv("MAIL_ENABLED") or "true").lower() in {"1", "true", "yes", "on"},
-            "host": os.getenv("SMTP_HOST") or os.getenv("MAIL_SERVER") or "mail.infomaniak.com",
-            "port": int(os.getenv("SMTP_PORT") or os.getenv("MAIL_PORT") or "587"),
-            "user": os.getenv("SMTP_USER") or os.getenv("MAIL_USERNAME") or "contact@restor-pc.fr",
-            "password": os.getenv("SMTP_PASSWORD") or os.getenv("MAIL_PASSWORD") or "",
-            "sender": os.getenv("SMTP_SENDER") or os.getenv("MAIL_DEFAULT_SENDER") or os.getenv("MAIL_USERNAME") or "contact@restor-pc.fr",
-            "from_name": os.getenv("MAIL_FROM_NAME") or "RESTOR-PC",
-            "use_ssl": (os.getenv("SMTP_SSL") or os.getenv("MAIL_USE_SSL") or "").lower() in {"1", "true", "yes", "on"},
-            "use_tls": (os.getenv("SMTP_TLS") or os.getenv("MAIL_USE_TLS") or "true").lower() in {"1", "true", "yes", "on"},
-        }
-
-    def _send_document_email(
-        *,
-        to_email: str,
-        subject: str,
-        body: str,
-        html_attachment: str,
-        attachment_name: str,
-    ) -> tuple[bool, str]:
-        """Envoi SMTP Infomaniak. Attache un PDF si wkhtmltopdf est installé, sinon un HTML imprimable."""
-        cfg = _smtp_config()
-        if not cfg["enabled"] or not cfg["password"]:
-            return False, "smtp_not_configured"
-
-        payload, maintype, subtype, final_name = render_document_pdf(html_attachment, attachment_name)
-
-        msg = EmailMessage()
-        msg["From"] = formataddr((cfg["from_name"], cfg["sender"]))
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg["Reply-To"] = cfg["sender"]
-        msg.set_content(body)
-        msg.add_attachment(payload, maintype=maintype, subtype=subtype, filename=final_name)
-
-        try:
-            if cfg["use_ssl"]:
-                with smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=30) as smtp:
-                    smtp.login(cfg["user"], cfg["password"])
-                    smtp.send_message(msg)
-            else:
-                with smtplib.SMTP(cfg["host"], cfg["port"], timeout=30) as smtp:
-                    smtp.ehlo()
-                    if cfg["use_tls"]:
-                        smtp.starttls()
-                        smtp.ehlo()
-                    smtp.login(cfg["user"], cfg["password"])
-                    smtp.send_message(msg)
-            return True, "sent_pdf" if subtype == "pdf" else "sent_html_fallback"
-        except Exception as exc:
-            return False, f"smtp_error:{exc}"
+    # Alias local : le reste du fichier utilise _send_document_email, désormais
+    # une fonction module-level (send_document_email) partagée avec client_portal.py.
+    _send_document_email = send_document_email
 
     def _smtp_not_configured_redirect(kind: str) -> RedirectResponse:
         target = "/quotes" if kind == "quote" else "/invoices"
@@ -316,6 +330,109 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
         session.commit()
         return RedirectResponse("/invoices?mail=error", status_code=303)
 
+
+    # ── Relances devis/factures en retard (semi-automatique) ───────────────
+    # Pas de scheduler : le technicien consulte /relances et déclenche l'envoi
+    # au clic. Chaque envoi est tracé dans Reminder pour éviter les doublons
+    # et afficher la date de dernière relance sur la liste.
+
+    def _last_reminder_at(session: Session, target_type: str, target_id: int):
+        return session.scalars(
+            select(Reminder)
+            .where(Reminder.target_type == target_type, Reminder.target_id == target_id)
+            .order_by(Reminder.sent_at.desc())
+        ).first()
+
+    @router.get("/relances", response_class=HTMLResponse)
+    def reminders_page(request: Request, session: Session = Depends(get_session)):
+        user, redirect = get_user_or_redirect(request, session)
+        if redirect:
+            return redirect
+        now = datetime.now(timezone.utc)
+        overdue_quotes = session.scalars(
+            select(Quote).where(Quote.status == "sent", Quote.valid_until.is_not(None), Quote.valid_until < now)
+            .order_by(Quote.valid_until.asc())
+        ).all()
+        overdue_invoices = session.scalars(
+            select(Invoice).where(Invoice.status == "issued", Invoice.due_date.is_not(None), Invoice.due_date < now)
+            .order_by(Invoice.due_date.asc())
+        ).all()
+        quote_rows = [{
+            "quote": q,
+            "days_overdue": (now.date() - q.valid_until.date()).days if q.valid_until else 0,
+            "last_reminder": _last_reminder_at(session, "quote", q.id),
+        } for q in overdue_quotes]
+        invoice_rows = [{
+            "invoice": inv,
+            "days_overdue": (now.date() - inv.due_date.date()).days if inv.due_date else 0,
+            "last_reminder": _last_reminder_at(session, "invoice", inv.id),
+        } for inv in overdue_invoices]
+        return templates.TemplateResponse("relances.html", {"active_page": "relances",
+            "request": request, "user": user,
+            "quote_rows": quote_rows, "invoice_rows": invoice_rows,
+        })
+
+    @router.post("/quote/{quote_id}/remind")
+    def remind_quote(quote_id: int, request: Request, session: Session = Depends(get_session)):
+        user, redirect = get_user_or_redirect(request, session)
+        if redirect:
+            return redirect
+        quote_obj = session.scalars(select(Quote).where(Quote.id == quote_id)).first()
+        if not quote_obj:
+            raise HTTPException(status_code=404, detail="Devis introuvable")
+        client = quote_obj.client
+        if not client or not client.email:
+            return RedirectResponse("/relances?mail=missing_client_email", status_code=303)
+        subject = f"Rappel — Devis Restor-PC {quote_obj.quote_number} en attente de réponse"
+        body = (
+            f"Bonjour {client.name},\n\n"
+            f"Nous restons à votre disposition concernant le devis {quote_obj.quote_number} "
+            f"({quote_obj.amount:.2f} €), toujours en attente de votre réponse.\n\n"
+            "Cordialement,\nRESTOR-PC\ncontact@restor-pc.fr"
+        )
+        ok, detail = _send_document_email(
+            to_email=client.email, subject=subject, body=body,
+            html_attachment=quote_html(quote_obj), attachment_name=f"{quote_obj.quote_number}.pdf",
+        )
+        if ok:
+            session.add(Reminder(target_type="quote", target_id=quote_id, sent_by_user_id=user.id))
+            log_activity(session, user, "quote.remind", quote_obj.quote_number)
+            session.commit()
+            return RedirectResponse("/relances?mail=sent", status_code=303)
+        log_activity(session, user, "quote.remind_error", f"{quote_obj.quote_number} {detail}")
+        session.commit()
+        return RedirectResponse("/relances?mail=error", status_code=303)
+
+    @router.post("/invoice/{invoice_id}/remind")
+    def remind_invoice(invoice_id: int, request: Request, session: Session = Depends(get_session)):
+        user, redirect = get_user_or_redirect(request, session)
+        if redirect:
+            return redirect
+        invoice_obj = session.scalars(select(Invoice).where(Invoice.id == invoice_id)).first()
+        if not invoice_obj:
+            raise HTTPException(status_code=404, detail="Facture introuvable")
+        client = invoice_obj.client
+        if not client or not client.email:
+            return RedirectResponse("/relances?mail=missing_client_email", status_code=303)
+        subject = f"Rappel — Facture Restor-PC {invoice_obj.invoice_number} en attente de paiement"
+        body = (
+            f"Bonjour {client.name},\n\n"
+            f"Nous vous rappelons que la facture {invoice_obj.invoice_number} "
+            f"({invoice_obj.amount:.2f} €) est toujours en attente de règlement.\n\n"
+            "Cordialement,\nRESTOR-PC\ncontact@restor-pc.fr"
+        )
+        ok, detail = _send_document_email(
+            to_email=client.email, subject=subject, body=body,
+            html_attachment=invoice_html(invoice_obj), attachment_name=f"{invoice_obj.invoice_number}.pdf",
+        )
+        if ok:
+            session.add(Reminder(target_type="invoice", target_id=invoice_id, sent_by_user_id=user.id))
+            log_activity(session, user, "invoice.remind", invoice_obj.invoice_number)
+            session.commit()
+            return RedirectResponse("/relances?mail=sent", status_code=303)
+        log_activity(session, user, "invoice.remind_error", f"{invoice_obj.invoice_number} {detail}")
+        session.commit()
+        return RedirectResponse("/relances?mail=error", status_code=303)
 
     @router.post("/quote/{quote_id}/convert")
     def convert_quote_to_invoice(quote_id: int, request: Request, session: Session = Depends(get_session)):

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -184,6 +184,80 @@ class InterventionPart(Base):
 
     intervention: Mapped["Intervention"] = relationship(back_populates="used_parts")
     part: Mapped["Part"] = relationship()
+
+
+class Reminder(Base):
+    """Trace des relances envoyées pour un devis ou une facture en retard.
+
+    target_type vaut "quote" ou "invoice" ; target_id référence Quote.id ou
+    Invoice.id selon le cas (pas de FK unique possible sur deux tables).
+    """
+    __tablename__ = "reminder"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_type: Mapped[str] = mapped_column(String(20))
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    sent_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
+
+
+class Appointment(Base):
+    __tablename__ = "appointment"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id"), nullable=True)
+    intervention_id: Mapped[int | None] = mapped_column(ForeignKey("intervention.id"), nullable=True)
+    technician_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(255))
+    notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    start_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="scheduled")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    client: Mapped["Client | None"] = relationship()
+    intervention: Mapped["Intervention | None"] = relationship()
+    technician: Mapped["User | None"] = relationship()
+
+
+class ClientAccount(Base):
+    """Compte de connexion à l'espace client — séparé de la fiche CRM `Client`.
+
+    Un `Client` (fiche interne) peut avoir au plus un `ClientAccount` (accès portail).
+    `hashed_password` est nullable : un compte peut n'utiliser que l'OAuth (Google/GitHub).
+    """
+    __tablename__ = "client_account"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("client.id"), unique=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    client: Mapped["Client"] = relationship()
+    oauth_identities: Mapped[list["ClientOAuthIdentity"]] = relationship(back_populates="client_account", cascade="all, delete-orphan")
+
+
+class ClientOAuthIdentity(Base):
+    """Identité OAuth (Google/GitHub) liée à un ClientAccount existant.
+
+    La liaison ne peut se faire qu'avec un compte déjà créé par l'atelier
+    (email correspondant) — voir app/oauth.py et routes/client_portal.py.
+    """
+    __tablename__ = "client_oauth_identity"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_account_id: Mapped[int] = mapped_column(ForeignKey("client_account.id"))
+    provider: Mapped[str] = mapped_column(String(20))
+    provider_user_id: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    client_account: Mapped["ClientAccount"] = relationship(back_populates="oauth_identities")
+
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_client_oauth_provider_user"),
+    )
 
 
 class ActivityLog(Base):

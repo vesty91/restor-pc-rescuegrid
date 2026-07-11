@@ -235,7 +235,11 @@
       <a href="/tickets"><span class="left"><span class="ico">□</span>Tickets</span><span class="badge">{{ tickets|length }}</span></a>
       <a href="/quotes"><span class="left"><span class="ico">▤</span>Devis</span><span class="badge">{{ quotes|length }}</span></a>
       <a href="/invoices"><span class="left"><span class="ico">▥</span>Factures</span><span class="badge">{{ invoices|length }}</span></a>
+      {% set n = overdue_count() %}
+      <a href="/relances"><span class="left"><span class="ico">⏰</span>Relances</span>{% if n %}<span class="badge">{{ n }}</span>{% endif %}</a>
+      <a href="/planning"><span class="left"><span class="ico">📅</span>Planning</span></a>
       <a href="/parts"><span class="left"><span class="ico">⚙</span>Pièces</span></a>
+      <a href="/comptabilite"><span class="left"><span class="ico">€</span>Comptabilité</span></a>
       <a href="/tools"><span class="left"><span class="ico">◈</span>Sauvegardes</span></a>
       <a href="/interventions"><span class="left"><span class="ico">▧</span>Rapports</span></a>
       <a href="/interventions"><span class="left"><span class="ico">⌬</span>Forensic</span></a>

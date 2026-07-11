@@ -37,7 +37,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .database import get_session, init_db, SessionLocal
@@ -398,6 +398,34 @@ def pagination_query(request: Request, page: int) -> str:
 templates.env.globals["pagination_query"] = pagination_query
 
 
+def overdue_count() -> int:
+    """Nombre de devis/factures en retard, affiché en badge sur la nav "Relances".
+
+    Ouvre une session courte dédiée : les templates n'ont pas accès à la
+    session de la requête en cours (pattern Jinja2Templates de FastAPI).
+    """
+    from .models import Invoice, Quote
+    now = datetime.now(timezone.utc)
+    try:
+        with SessionLocal() as session:
+            n_quotes = session.scalar(
+                select(func.count()).select_from(Quote).where(
+                    Quote.status == "sent", Quote.valid_until.is_not(None), Quote.valid_until < now
+                )
+            ) or 0
+            n_invoices = session.scalar(
+                select(func.count()).select_from(Invoice).where(
+                    Invoice.status == "issued", Invoice.due_date.is_not(None), Invoice.due_date < now
+                )
+            ) or 0
+            return int(n_quotes) + int(n_invoices)
+    except Exception:
+        return 0
+
+
+templates.env.globals["overdue_count"] = overdue_count
+
+
 # ── Protection anti-CSRF (vérification d'origine) ──────────────────────────────
 # L'authentification repose sur un cookie de session (JWT). Pour les requêtes de
 # mutation (POST/PUT/PATCH/DELETE) envoyées par un navigateur, on vérifie que
@@ -437,7 +465,14 @@ from .routes import interventions as r_interventions
 from .routes import parts as r_parts
 from .routes import tickets as r_tickets
 from .routes import billing as r_billing
+from .routes import planning as r_planning
+from .routes import client_portal as r_client_portal
 
+# r_client_portal est inclus AVANT r_clients : les routes littérales /client/login,
+# /client/logout, /client/portal doivent être testées avant le pattern générique
+# /client/{client_id} (clients.py), sinon Starlette matcherait "login"/"portal"
+# comme un client_id et renverrait une erreur 422 (échec de conversion en int).
+app.include_router(r_client_portal.init_router(templates))
 app.include_router(r_clients.init_router(templates))
 app.include_router(r_machines.init_router(templates, _hardware_for_intervention))
 app.include_router(r_interventions.init_router(
@@ -448,6 +483,7 @@ app.include_router(r_interventions.init_router(
 app.include_router(r_parts.init_router(templates))
 app.include_router(r_tickets.init_router(templates))
 app.include_router(r_billing.init_router(templates, next_document_number, default_billing_amount))
+app.include_router(r_planning.init_router(templates))
 app.include_router(init_v10_routes(
     templates, STORAGE_DIR, REPORT_DIR, sanitize_filename, intervention_dir, resolve_storage_path
 ))
