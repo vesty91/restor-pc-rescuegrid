@@ -258,7 +258,7 @@ def document_html(
   html, body {{ margin:0; padding:0; }}
   body {{
     font-family:"Segoe UI", Arial, sans-serif;
-    color:var(--rp-ink);
+    color:#0f172a;
     background:linear-gradient(135deg,#070b12,#101827 55%,#07101c);
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
@@ -273,7 +273,7 @@ def document_html(
   .print-btn {{
     border:1px solid rgba(10,165,255,.45);
     border-radius:999px;
-    background:linear-gradient(135deg,var(--rp-blue),var(--rp-blue2));
+    background:linear-gradient(135deg,#0969e8,#0aa5ff);
     color:white;
     padding:10px 16px;
     font-weight:900;
@@ -331,7 +331,7 @@ def document_html(
     font-size:24px; font-weight:950; letter-spacing:1px; margin-bottom:8mm;
   }}
   .company-name {{
-    color:var(--rp-blue2);
+    color:#0aa5ff;
     font-weight:950;
     text-transform:uppercase;
     letter-spacing:.6px;
@@ -349,7 +349,7 @@ def document_html(
     color:#e5edf8;
   }}
   .ico {{
-    color:var(--rp-blue2);
+    color:#0aa5ff;
     font-weight:900;
     text-align:center;
   }}
@@ -374,7 +374,7 @@ def document_html(
     position:absolute;
     right:11mm; top:0;
     width:14mm; height:48mm;
-    background:linear-gradient(180deg,var(--rp-blue2),var(--rp-blue));
+    background:linear-gradient(180deg,#0aa5ff,#0969e8);
     transform:skewX(-28deg);
     border-radius:0 0 3mm 3mm;
     box-shadow:-4mm 3mm 0 rgba(9,105,232,.18);
@@ -386,7 +386,7 @@ def document_html(
   }}
   .doc-meta h1 {{
     margin:0 0 8mm;
-    color:var(--rp-blue);
+    color:#0969e8;
     font-size:30px;
     line-height:1;
     letter-spacing:.8px;
@@ -413,7 +413,7 @@ def document_html(
     right:11mm;
     bottom:0;
     height:1px;
-    background:linear-gradient(90deg,var(--rp-blue),rgba(9,105,232,.15));
+    background:linear-gradient(90deg,#0969e8,rgba(9,105,232,.15));
   }}
   .content {{
     padding:5mm 11mm 23mm;
@@ -424,7 +424,7 @@ def document_html(
     gap:12mm;
   }}
   .block {{
-    border-top:1.5px solid var(--rp-line);
+    border-top:1.5px solid #dbe7f5;
     padding-top:4mm;
     min-height:22mm;
   }}
@@ -440,7 +440,7 @@ def document_html(
   }}
   .section-title .mini {{
     width:5mm; height:5mm; border-radius:50%;
-    background:linear-gradient(135deg,var(--rp-blue),var(--rp-blue2));
+    background:linear-gradient(135deg,#0969e8,#0aa5ff);
     color:white;
     display:inline-flex;
     align-items:center;
@@ -476,7 +476,7 @@ def document_html(
     left:0; top:.1mm;
     width:4.2mm; height:4.2mm;
     border-radius:50%;
-    background:var(--rp-blue);
+    background:#0969e8;
     color:white;
     font-size:9px;
     line-height:4.2mm;
@@ -489,11 +489,11 @@ def document_html(
     width:100%;
     border-collapse:collapse;
     margin-top:5mm;
-    border:1px solid var(--rp-line);
+    border:1px solid #dbe7f5;
     box-shadow:0 5px 16px rgba(15,23,42,.04);
   }}
   table.items th {{
-    background:linear-gradient(135deg,#075bbb,var(--rp-blue));
+    background:linear-gradient(135deg,#075bbb,#0969e8);
     color:white;
     text-transform:uppercase;
     font-size:10.5px;
@@ -503,7 +503,7 @@ def document_html(
   }}
   table.items td {{
     padding:3.2mm 3mm;
-    border-bottom:1px solid var(--rp-line);
+    border-bottom:1px solid #dbe7f5;
     vertical-align:top;
     font-size:11.2px;
   }}
@@ -521,7 +521,7 @@ def document_html(
     width:88mm;
     margin-left:auto;
     margin-top:0;
-    border:1px solid var(--rp-line);
+    border:1px solid #dbe7f5;
     border-top:0;
   }}
   .totals .row {{
@@ -529,7 +529,7 @@ def document_html(
     grid-template-columns:1fr 32mm;
     align-items:center;
     min-height:7.5mm;
-    border-bottom:1px solid var(--rp-line);
+    border-bottom:1px solid #dbe7f5;
     font-size:11.2px;
   }}
   .totals .row span {{
@@ -540,7 +540,7 @@ def document_html(
     padding-right:4mm;
   }}
   .totals .grand {{
-    background:linear-gradient(135deg,#075bbb,var(--rp-blue));
+    background:linear-gradient(135deg,#075bbb,#0969e8);
     color:white;
     border-bottom:0;
     font-size:16px;
@@ -552,7 +552,7 @@ def document_html(
     page-break-inside:avoid;
     margin-top:5mm;
     padding-top:4mm;
-    border-top:1.5px solid var(--rp-line);
+    border-top:1.5px solid #dbe7f5;
   }}
   .payment p {{
     margin:0;
@@ -622,7 +622,7 @@ def document_html(
     align-items:center;
   }}
   .footer-right {{
-    background:linear-gradient(135deg,#075bbb,var(--rp-blue));
+    background:linear-gradient(135deg,#075bbb,#0969e8);
     padding:3.2mm 10mm;
     text-align:right;
     font-weight:800;

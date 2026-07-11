@@ -1,5 +1,17 @@
 # Changelog
 
+## v12.3.3 — Correctif génération PDF (devis/factures)
+
+- **Bug bloquant en production** : les PDF de devis/factures échouaient
+  silencieusement (`xhtml2pdf` ne supporte pas les variables CSS `var(--rp-*)`
+  utilisées dans le template HTML), et l'application repartait sur le
+  dernier recours : l'envoi du document en pièce jointe HTML brute au lieu
+  d'un PDF. Toutes les couleurs `var(--rp-*)` du template de génération PDF
+  (`document_html` dans `backend/app/helpers.py`, partagé par devis et
+  factures) ont été remplacées par leurs valeurs hexadécimales littérales.
+  Vérifié en production : le document généré est désormais un vrai
+  `%PDF-1.4` valide.
+
 ## v12.3.2 — Revue de sécurité complète
 
 Correctifs suite à un audit manuel de l'ensemble du projet (auth, autorisation,
