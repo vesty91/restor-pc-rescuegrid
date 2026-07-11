@@ -81,6 +81,12 @@ services:
       dockerfile: Dockerfile
     container_name: rescuegrid_backend
     restart: unless-stopped
+    # Charge TOUTES les variables de .env (MAIL_*, SMTP_*, OAUTH_*, RESTORPC_*,
+    # BACKUP_SCHEDULE_*, MAX_*, UPLOAD_*...) dans le conteneur. Le bloc
+    # "environment:" ci-dessous a priorite sur env_file et sert a imposer les
+    # variables critiques obligatoires (DATABASE_URL, SECRET_KEY, ADMIN_PASSWORD).
+    env_file:
+      - .env
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-rescuegrid}:${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD dans .env}@postgres:5432/${POSTGRES_DB:-rescuegrid}"
       SECRET_KEY: "${SECRET_KEY:?Definir SECRET_KEY dans .env, ex. openssl rand -hex 32}"
