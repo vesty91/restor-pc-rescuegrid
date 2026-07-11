@@ -11,7 +11,7 @@ powershell -ExecutionPolicy Bypass -File install_dependencies.ps1
 
 Dashboard : http://localhost:8000
 
-Login par défaut : `admin` / `rescuegrid2026`
+Login par défaut : `admin` / mot de passe défini dans `.env` (`ADMIN_PASSWORD`), ou généré aléatoirement et affiché une seule fois dans les logs serveur si `.env` ne le définit pas (voir `docker-compose.yml` pour le dev local, où il reste fixé à `rescuegrid2026` par confort).
 
 ## Configuration e-mail Infomaniak
 
