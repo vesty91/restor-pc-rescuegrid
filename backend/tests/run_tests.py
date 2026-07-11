@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -158,6 +159,35 @@ def test_upload_zip_authenticated() -> None:
     record("POST /upload ZIP authentifié", r.status_code == 303, f"status={r.status_code}")
 
 
+def test_upload_metadata_from_inventory() -> None:
+    """/upload doit lire inventory.json (schéma réel produit par l'agent, voir
+    make_sample_zip) et pas un manifest.json inexistant — bug corrigé en v12.3
+    qui laissait bios_serial/health_score toujours vides et cassait la
+    déduplication des machines entre postes techniciens (mode multi-poste)."""
+    from app.database import SessionLocal
+    from app.models import Intervention
+    from sqlalchemy import select
+
+    with SessionLocal() as session:
+        intervention = session.scalars(
+            select(Intervention).where(Intervention.title.contains("PC-TEST"))
+        ).first()
+    if not intervention:
+        record("Métadonnées upload (bios_serial/health_score)", False, "intervention introuvable")
+        return
+    ok = (
+        intervention.bios_serial == "BIOS-TEST-123"
+        and intervention.health_score == 97
+        and intervention.disk_risk == "healthy"
+        and intervention.data_loss_risk == "Faible"
+    )
+    record(
+        "Métadonnées upload (bios_serial/health_score depuis inventory.json)",
+        ok,
+        f"bios={intervention.bios_serial} score={intervention.health_score} disk_risk={intervention.disk_risk}",
+    )
+
+
 def test_upload_zip_unauthenticated() -> None:
     """Sans UPLOAD_API_KEY ni ALLOW_ANONYMOUS_UPLOAD, l'upload anonyme est refusé (sécurisé par défaut)."""
     c = TestClient(app)
@@ -296,6 +326,81 @@ def test_export_comptable_xlsx() -> None:
         r.status_code == 200 and "spreadsheetml" in r.headers.get("content-type", ""),
         r.headers.get("content-type", ""),
     )
+
+
+def test_backup_rotation_unit() -> None:
+    """_rotate_backups doit conserver uniquement les BACKUP_RETENTION_COUNT
+    fichiers les plus récents (rescuegrid_*), quel que soit le moteur (SQLite/PG)."""
+    from app import backup as backup_module
+
+    with tempfile.TemporaryDirectory() as tmp:
+        backups_dir = Path(tmp) / "backups"
+        backups_dir.mkdir()
+        original_retention = backup_module.BACKUP_RETENTION_COUNT
+        backup_module.BACKUP_RETENTION_COUNT = 3
+        try:
+            now = time.time()
+            for i in range(5):
+                f = backups_dir / f"rescuegrid_2026010{i}_000000.db"
+                f.write_text("dummy")
+                mtime = now - (5 - i)
+                os.utime(f, (mtime, mtime))
+            backup_module._rotate_backups(backups_dir)
+            remaining = sorted(p.name for p in backups_dir.iterdir())
+            record(
+                "Rotation sauvegardes (retention=3 sur 5 fichiers)",
+                len(remaining) == 3,
+                f"restants={remaining}",
+            )
+        finally:
+            backup_module.BACKUP_RETENTION_COUNT = original_retention
+
+
+def test_backup_perform_and_rotate_sqlite() -> None:
+    """perform_backup_and_rotate doit copier le fichier SQLite et créer une
+    entrée listable par list_backups() — testé avec des dossiers isolés
+    (aucun impact sur la vraie base de développement)."""
+    from app import backup as backup_module
+
+    with tempfile.TemporaryDirectory() as tmp:
+        base_dir = Path(tmp)
+        storage_dir = Path(tmp) / "storage"
+        storage_dir.mkdir()
+        (base_dir / "rescuegrid.db").write_text("fake-sqlite-content")
+        dest = backup_module.perform_backup_and_rotate(base_dir, storage_dir)
+        backups = backup_module.list_backups(storage_dir)
+        ok = dest.exists() and dest.name.startswith("rescuegrid_") and len(backups) == 1
+        record("perform_backup_and_rotate (SQLite, dossiers isolés)", ok, str(dest))
+
+
+def test_backup_history_requires_admin() -> None:
+    c = TestClient(app)
+    r = c.get("/backup/history", follow_redirects=False)
+    record("GET /backup/history sans auth -> redirect", r.status_code == 303, f"status={r.status_code}")
+
+
+def test_backup_history_page() -> None:
+    r = client.get("/backup/history")
+    record(
+        "GET /backup/history (admin)",
+        r.status_code == 200 and "sauvegardes planifiées" in r.text.lower(),
+        f"status={r.status_code}",
+    )
+
+
+def test_backup_run_requires_admin() -> None:
+    c = TestClient(app)
+    r = c.post("/backup/run", follow_redirects=False)
+    record("POST /backup/run sans auth -> redirect", r.status_code == 303, f"status={r.status_code}")
+
+
+def test_backup_run_manual() -> None:
+    """Le déclenchement manuel ne doit jamais planter (500), qu'il réussisse
+    (rescuegrid.db présent en local) ou échoue proprement avec un message
+    d'erreur (absent sur une machine de test fraîche)."""
+    r = client.post("/backup/run", follow_redirects=False)
+    ok = r.status_code == 303 and (r.headers.get("location") or "").startswith("/backup/history")
+    record("POST /backup/run (admin)", ok, f"status={r.status_code} location={r.headers.get('location')}")
 
 
 def test_planning_crud() -> None:
@@ -456,6 +561,7 @@ def main() -> int:
     test_sanitize_filename()
     test_safe_extract_zip_zipslip()
     test_upload_zip_authenticated()
+    test_upload_metadata_from_inventory()
     test_upload_zip_unauthenticated()
     test_upload_zip_anonymous_allowed_when_opted_in()
     test_downloads_after_upload()
@@ -465,6 +571,12 @@ def main() -> int:
     test_comptabilite_requires_admin()
     test_comptabilite_page()
     test_export_comptable_xlsx()
+    test_backup_rotation_unit()
+    test_backup_perform_and_rotate_sqlite()
+    test_backup_history_requires_admin()
+    test_backup_history_page()
+    test_backup_run_requires_admin()
+    test_backup_run_manual()
     test_planning_requires_auth()
     test_planning_crud()
     test_relances_page()

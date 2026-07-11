@@ -8,18 +8,22 @@
   - structure de dossiers rapports/backup/outils ;
   - fichier de configuration Dashboard/NAS ;
   - lanceur Start-RescueGrid.cmd ;
-  - script startnet.cmd compatible WinPE.
+  - script startnet.cmd compatible WinPE ;
+  - copie de boot.wim si le Windows ADK + add-on WinPE est installé (-WinPEBasePath).
 
   Sécurité :
   - ne formate jamais la clé sans -Format ;
   - demande confirmation avant formatage ;
   - peut copier le projet complet avec -IncludeProject.
 
+  Script canonique unique depuis v12.3 : remplace Build-RescueGridUSB.ps1
+  (désormais un simple alias de compatibilité qui redirige ici).
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File agent\windows\Create-RescueGridUSB.ps1 -TargetDrive E: -DashboardUrl "http://192.168.1.10:8000" -IncludeProject
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File agent\windows\Create-RescueGridUSB.ps1 -TargetDrive E: -Format
+  powershell -ExecutionPolicy Bypass -File agent\windows\Create-RescueGridUSB.ps1 -TargetDrive E: -Format -FileSystem FAT32 -WinPEBasePath C:\WinPE
 #>
 
 [CmdletBinding(SupportsShouldProcess=$true)]
@@ -34,14 +38,35 @@ param(
 
     [switch]$Format,
 
+    [ValidateSet("NTFS", "FAT32")]
+    [string]$FileSystem = "NTFS",
+
     [string]$VolumeLabel = "RESCUEGRID",
 
     [string]$SmartctlSource = "",
 
-    [string]$TestDiskSource = ""
+    [string]$TestDiskSource = "",
+
+    # Dossier ADK contenant boot.wim (voir docs/TECHNICIAN_MANUAL.md) — utilisé
+    # seulement si le Windows ADK + add-on WinPE est déjà installé localement.
+    # Aucun téléchargement ni build d'image n'est effectué par ce script.
+    [string]$WinPEBasePath = "C:\WinPE",
+
+    # Ecrite dans rescuegrid.env (RESCUEGRID_UPLOAD_API_KEY) — lue automatiquement
+    # par Invoke-RescueGrid.ps1 / Start-RescueGrid.ps1 (Import-RescueGridEnv).
+    [string]$UploadApiKey = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+function Test-RescueGridAdmin {
+    $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+if ($Format -and -not (Test-RescueGridAdmin)) {
+    throw "-Format nécessite une invite PowerShell exécutée en tant qu'administrateur."
+}
 
 function Write-Step {
     param([string]$Message)
@@ -73,10 +98,10 @@ if ($Format) {
         throw "Formatage annulé."
     }
 
-    Write-Step "Formatage de la clé USB"
+    Write-Step "Formatage de la clé USB ($FileSystem)"
     $partition = Get-Partition -DriveLetter $TargetDrive.TrimEnd(":") -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $partition) { throw "Partition introuvable pour $TargetDrive" }
-    Format-Volume -Partition $partition -FileSystem NTFS -NewFileSystemLabel $VolumeLabel -Confirm:$false -Force
+    Format-Volume -Partition $partition -FileSystem $FileSystem -NewFileSystemLabel $VolumeLabel -Confirm:$false -Force
 }
 
 Write-Step "Préparation de la structure USB"
@@ -117,6 +142,27 @@ if ($IncludeProject) {
     robocopy $projectRoot $destination /E /XD ".git" ".venv" "__pycache__" "storage" /XF "*.db" "*.sqlite" "*.pyc" | Out-Null
 }
 
+Write-Step "WinPE (si Windows ADK déjà installé)"
+$copiedWinPE = $false
+$winpeCandidates = @(
+    "$WinPEBasePath\media\sources\boot.wim",
+    "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\amd64\en-us\winpe.wim"
+)
+foreach ($wim in $winpeCandidates) {
+    if (Test-Path $wim) {
+        Copy-Item $wim "$usbRoot\winpe\boot.wim" -Force
+        Write-Host "WinPE copié depuis $wim" -ForegroundColor Green
+        $copiedWinPE = $true
+        break
+    }
+}
+if (-not $copiedWinPE) {
+    Write-Host "WinPE non trouvé (ADK non installé ou -WinPEBasePath incorrect)." -ForegroundColor Yellow
+    Write-Host "La clé reste utilisable en mode Windows classique (Start-RescueGrid.cmd)." -ForegroundColor Gray
+    Write-Host "Pour le mode WinPE bootable : installer le Windows ADK + add-on WinPE," -ForegroundColor Gray
+    Write-Host "voir docs/TECHNICIAN_MANUAL.md (section build ADK, à faire ultérieurement)." -ForegroundColor Gray
+}
+
 Copy-IfExists -Source $SmartctlSource -Destination "$usbRoot\tools\smartctl"
 Copy-IfExists -Source $TestDiskSource -Destination "$usbRoot\tools\testdisk"
 
@@ -127,7 +173,13 @@ RESCUEGRID_USB_ROOT=$usbRoot
 RESCUEGRID_BACKUP_ROOT=$usbRoot\backup
 RESCUEGRID_REPORT_ROOT=$usbRoot\reports
 "@
+if ($UploadApiKey) {
+    $config += "`nRESCUEGRID_UPLOAD_API_KEY=$UploadApiKey"
+}
 Set-Content -Path "$usbRoot\config\rescuegrid.env" -Value $config -Encoding UTF8
+# Ce fichier est désormais lu automatiquement par Invoke-RescueGrid.ps1 et
+# Start-RescueGrid.ps1 (fonction Import-RescueGridEnv) — plus besoin de ressaisir
+# l'URL dashboard / dossier de sauvegarde à chaque lancement depuis cette clé.
 
 Write-Step "Création lanceurs"
 $cmd = @"
@@ -190,3 +242,8 @@ foreach ($item in $required) {
 Write-Host ""
 Write-Host "Clé RescueGrid préparée : $TargetDrive" -ForegroundColor Green
 Write-Host "Lanceur : $TargetDrive\Start-RescueGrid.cmd" -ForegroundColor Green
+if ($copiedWinPE) {
+    Write-Host "WinPE : boot.wim présent (voir docs/TECHNICIAN_MANUAL.md pour rendre la clé bootable)" -ForegroundColor Green
+} else {
+    Write-Host "WinPE : non inclus (mode Windows classique uniquement)" -ForegroundColor Yellow
+}

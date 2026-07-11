@@ -106,11 +106,10 @@ services:
     networks:
       - rescuegrid
 
-volumes:
-  postgres_data:
-  minio_data:
-  storage_data:
-  reports_data:
+# Remarque : tous les services ci-dessus utilisent des bind mounts (./volumes/...)
+# plutot que des volumes nommes Docker, pour pouvoir pointer ./volumes/storage
+# vers un dossier partage Synology monte sur l'hote (voir docs/SYNOLOGY_DEPLOY.md).
+# Aucun volume nomme n'est donc necessaire ici.
 
 networks:
   rescuegrid:

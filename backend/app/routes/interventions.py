@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_session
@@ -183,23 +183,51 @@ async def upload_intervention(
     dest_dir.mkdir(parents=True, exist_ok=True)
     _safe_extract_zip(archive_path, dest_dir)
 
+    # L'agent Windows (Invoke-RescueGrid.ps1) produit inventory.json avec un schéma
+    # imbriqué (inventory.health.global_score, inventory.bios.SerialNumber, ...) —
+    # il ne génère jamais de manifest.json plat. On lit donc inventory.json en
+    # priorité, avec repli sur un manifest.json plat pour compatibilité future /
+    # imports manuels. Sans ce repli, bios_serial restait toujours vide et cassait
+    # la déduplication des machines entre postes techniciens (mode multi-poste).
+    inventory_path = dest_dir / "inventory.json"
     manifest_path = dest_dir / "manifest.json"
+    inventory: dict = {}
     metadata: dict = {}
+    if inventory_path.exists():
+        try:
+            inventory = json.loads(inventory_path.read_text(encoding="utf-8-sig", errors="replace"))
+        except Exception as exc:
+            logger.warning("Lecture inventory.json impossible: %s", exc)
     if manifest_path.exists():
         try:
             metadata = json.loads(manifest_path.read_text(encoding="utf-8-sig", errors="replace"))
         except Exception as exc:
             logger.warning("Lecture manifest impossible: %s", exc)
 
-    bios_serial = metadata.get("bios_serial") or metadata.get("SerialNumber") or ""
-    machine_name_raw = metadata.get("machine_name") or metadata.get("ComputerName") or safe_name
-    health_score = metadata.get("health_score")
-    disk_risk = metadata.get("disk_risk") or metadata.get("DiskRisk")
-    data_loss_risk = metadata.get("data_loss_risk") or metadata.get("DataLossRisk")
+    inv_bios = inventory.get("bios") or {}
+    inv_machine = inventory.get("machine") or {}
+    inv_health = inventory.get("health") or {}
+    inv_disk_risk = inventory.get("disk_risk") or {}
 
-    client = session.scalars(select(Client).where(Client.name == client_name.strip())).first()
+    bios_serial = (
+        inv_bios.get("SerialNumber") or metadata.get("bios_serial") or metadata.get("SerialNumber") or ""
+    )
+    machine_name_raw = (
+        inv_machine.get("CsName") or metadata.get("machine_name") or metadata.get("ComputerName") or safe_name
+    )
+    health_score = inv_health.get("global_score") if inv_health.get("global_score") is not None else metadata.get("health_score")
+    disk_risk = inv_disk_risk.get("level") or metadata.get("disk_risk") or metadata.get("DiskRisk")
+    data_loss_risk = inv_health.get("data_loss_risk") or metadata.get("data_loss_risk") or metadata.get("DataLossRisk")
+
+    # Comparaison insensible à la casse/espaces : deux techniciens sur deux postes
+    # différents saisissant "Dupont Jean" / "dupont jean" ne doivent pas créer deux
+    # fiches Client distinctes.
+    client_name_clean = client_name.strip()
+    client = session.scalars(
+        select(Client).where(func.lower(Client.name) == client_name_clean.lower())
+    ).first()
     if not client:
-        client = Client(name=client_name.strip())
+        client = Client(name=client_name_clean)
         session.add(client)
         session.flush()
 

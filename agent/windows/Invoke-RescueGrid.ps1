@@ -2,7 +2,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ClientName,
 
-    [Parameter(Mandatory = $true)]
+    # Optionnel depuis v12.3 : si omis, on tente de le lire depuis rescuegrid.env
+    # (RESCUEGRID_BACKUP_ROOT) -- voir Import-RescueGridEnv ci-dessous. Reste
+    # obligatoire au final si aucune des deux sources ne le fournit.
     [string]$BackupRoot,
 
     [string]$UserProfilePath,
@@ -13,8 +15,10 @@ param(
 
     [switch]$CreateZip,
 
+    # Optionnel : repli sur RESCUEGRID_DASHBOARD_URL (+ "/upload") depuis rescuegrid.env
     [string]$DashboardUploadUrl,
 
+    # Optionnel : repli sur RESCUEGRID_UPLOAD_API_KEY depuis rescuegrid.env
     [string]$UploadApiKey,
 
     [switch]$SkipConsent,
@@ -30,8 +34,66 @@ param(
 
     [switch]$ExportCSV,
     [switch]$ExportJSON,
-    [switch]$SilentMode
+    [switch]$SilentMode,
+
+    # Chemin explicite vers rescuegrid.env (sinon recherche automatique : USB,
+    # dossier du script, variable d'environnement RESCUEGRID_ENV_PATH)
+    [string]$RescueGridEnvPath
 )
+
+function Import-RescueGridEnv {
+    <#
+    .SYNOPSIS
+      Charge la configuration RescueGrid (rescuegrid.env) écrite par
+      Create-RescueGridUSB.ps1 (RESCUEGRID_DASHBOARD_URL, RESCUEGRID_BACKUP_ROOT,
+      RESCUEGRID_UPLOAD_API_KEY, ...). Ne lève jamais d'exception : retourne un
+      hashtable vide si aucun fichier n'est trouvé. Ce fichier était jusqu'ici
+      écrit sur la clé USB mais jamais relu par l'agent.
+    #>
+    param([string]$ExplicitPath)
+
+    $result = @{}
+    $candidates = @()
+    if ($ExplicitPath) { $candidates += $ExplicitPath }
+    if ($env:RESCUEGRID_ENV_PATH) { $candidates += $env:RESCUEGRID_ENV_PATH }
+    if ($PSScriptRoot) {
+        $candidates += Join-Path $PSScriptRoot "..\..\config\rescuegrid.env"   # clé USB : RescueGrid\agent\windows\..
+        $candidates += Join-Path $PSScriptRoot "rescuegrid.env"
+    }
+
+    foreach ($path in $candidates) {
+        if ($path -and (Test-Path $path -PathType Leaf)) {
+            try {
+                Get-Content -Path $path -Encoding UTF8 -ErrorAction Stop | ForEach-Object {
+                    $line = $_.Trim()
+                    if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+                        $parts = $line.Split("=", 2)
+                        $result[$parts[0].Trim()] = $parts[1].Trim()
+                    }
+                }
+                Write-Host "[CONFIG] rescuegrid.env chargé : $path" -ForegroundColor DarkGray
+                return $result
+            } catch {
+                Write-Host "[CONFIG] Lecture impossible de $path : $_" -ForegroundColor Yellow
+            }
+        }
+    }
+    return $result
+}
+
+$RescueGridConfig = Import-RescueGridEnv -ExplicitPath $RescueGridEnvPath
+if (-not $BackupRoot -and $RescueGridConfig.ContainsKey("RESCUEGRID_BACKUP_ROOT")) {
+    $BackupRoot = $RescueGridConfig["RESCUEGRID_BACKUP_ROOT"]
+}
+if (-not $DashboardUploadUrl -and $RescueGridConfig.ContainsKey("RESCUEGRID_DASHBOARD_URL")) {
+    $DashboardUploadUrl = "{0}/upload" -f $RescueGridConfig["RESCUEGRID_DASHBOARD_URL"].TrimEnd("/")
+}
+if (-not $UploadApiKey -and $RescueGridConfig.ContainsKey("RESCUEGRID_UPLOAD_API_KEY")) {
+    $UploadApiKey = $RescueGridConfig["RESCUEGRID_UPLOAD_API_KEY"]
+}
+if (-not $BackupRoot) {
+    throw "BackupRoot manquant : passez -BackupRoot, ou renseignez RESCUEGRID_BACKUP_ROOT dans config\rescuegrid.env (voir Create-RescueGridUSB.ps1)."
+}
 
 $ErrorActionPreference = "Continue"
 $startedAt = Get-Date

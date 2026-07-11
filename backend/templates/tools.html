@@ -12,8 +12,9 @@
 <div class="grid2">
   <div class="card">
     <h2>1. Créer clé USB</h2>
-    <p class="muted" style="margin-bottom:12px">Prépare une clé technicien avec scripts RescueGrid, menu WinPE et outils externes.</p>
+    <p class="muted" style="margin-bottom:12px">Prépare une clé technicien avec scripts RescueGrid, menu WinPE et outils externes. Script unique depuis v12.3 (remplace Build-RescueGridUSB.ps1).</p>
     <pre>powershell -ExecutionPolicy Bypass -File agent\windows\Create-RescueGridUSB.ps1 -TargetDrive E: -DashboardUrl "http://192.168.1.10:8000" -IncludeProject</pre>
+    <p class="muted" style="margin-top:8px">Voir <code>docs/TECHNICIAN_MANUAL.md</code> pour le détail (formatage FAT32/NTFS, copie WinPE si ADK installé).</p>
   </div>
   <div class="card">
     <h2>2. Menu WinPE</h2>
@@ -32,8 +33,9 @@
   </div>
   <div class="card">
     <h2>5. Sauvegarde base de données</h2>
-    <p class="muted" style="margin-bottom:12px">Télécharger une copie de la base SQLite.</p>
+    <p class="muted" style="margin-bottom:12px">Télécharger une copie brute de la base SQLite, ou consulter l'historique des sauvegardes planifiées automatiques (rotation).</p>
     <a href="/backup/database" class="btn btn-secondary" style="display:inline-flex;margin-top:4px">⬇ Télécharger backup DB</a>
+    <a href="/backup/history" class="btn btn-secondary" style="display:inline-flex;margin-top:4px">🗄 Historique des sauvegardes planifiées</a>
   </div>
   <div class="card">
     <h2>6. Diagnostic santé</h2>
@@ -41,4 +43,50 @@
     <a href="/health" target="_blank" class="btn btn-secondary" style="display:inline-flex;margin-top:4px">◉ Healthcheck</a>
   </div>
 </div>
+
+{% if backups is defined %}
+<div class="page-header" style="margin-top:32px">
+  <h1>Historique des sauvegardes planifiées</h1>
+  <p>
+    Planification : {% if backup_schedule_enabled %}activée, chaque jour à {{ "%02d"|format(backup_schedule_hour) }}h00 UTC{% else %}désactivée (BACKUP_SCHEDULE_ENABLED=false){% endif %}
+    — rétention : {{ backup_retention }} copies
+    — moteur : {% if backup_is_postgres %}PostgreSQL (pg_dump){% else %}SQLite (copie fichier){% endif %}
+  </p>
+</div>
+
+{% if request.query_params.get('ok') %}
+<div class="notice success">✓ Sauvegarde manuelle effectuée avec succès.</div>
+{% endif %}
+{% if request.query_params.get('error') %}
+<div class="notice error">✗ Échec de la sauvegarde : {{ request.query_params.get('error') }}</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:20px">
+  <form method="post" action="/backup/run">
+    <button type="submit">▶ Sauvegarder maintenant</button>
+  </form>
+</div>
+
+<div class="card">
+  {% if backups %}
+  <table>
+    <thead>
+      <tr><th>Fichier</th><th>Date</th><th>Taille</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for b in backups %}
+      <tr>
+        <td>{{ b.name }}</td>
+        <td>{{ b.created_at.strftime("%d/%m/%Y %H:%M UTC") }}</td>
+        <td>{{ b.size_human }}</td>
+        <td><a href="/backup/download/{{ b.name }}" class="btn-sm">⬇ Télécharger</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Aucune sauvegarde planifiée pour l'instant.</div>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

@@ -40,6 +40,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from . import backup as backup_module
 from .database import get_session, init_db, SessionLocal
 from .helpers import apply_intervention_filters, generate_ai_summary, invoice_html, try_pdf_response
 from .models import Client, Intervention, Invoice, Machine, Part, Quote, Ticket, User
@@ -492,7 +493,7 @@ app.include_router(init_v10_routes(
 # ── Démarrage ─────────────────────────────────────────────────────────────────
 
 @app.on_event("startup")
-def on_startup() -> None:
+async def on_startup() -> None:
     STORAGE_DIR.mkdir(exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -500,6 +501,10 @@ def on_startup() -> None:
     with SessionLocal() as session:
         from .auth import create_default_admin
         create_default_admin(session)
+    # asyncio.create_task() nécessite une boucle en cours d'exécution : on ne peut
+    # démarrer le scheduler que depuis un handler startup *async* (les handlers sync
+    # sont exécutés dans un threadpool par Starlette, sans event loop courant).
+    backup_module.start_backup_scheduler(BASE_DIR, STORAGE_DIR)
 
 
 # ── Routes noyau ──────────────────────────────────────────────────────────────
@@ -650,6 +655,63 @@ def backup_database(request: Request):
             return StreamingResponse(iterfile(), media_type="application/octet-stream",
                                      headers={"Content-Disposition": "attachment; filename=rescuegrid_backup.db"})
     raise HTTPException(status_code=404, detail="Base SQLite introuvable")
+
+
+@app.get("/backup/history", response_class=HTMLResponse)
+def backup_history(request: Request, session: Session = Depends(get_session)):
+    from .auth import get_admin_or_redirect
+    user, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
+    backups = backup_module.list_backups(STORAGE_DIR)
+    return templates.TemplateResponse(
+        "tools.html",
+        {
+            "request": request,
+            "user": user,
+            "active_page": "tools",
+            "backups": backups,
+            "backup_retention": backup_module.BACKUP_RETENTION_COUNT,
+            "backup_schedule_hour": backup_module.BACKUP_SCHEDULE_HOUR,
+            "backup_schedule_enabled": backup_module.BACKUP_SCHEDULE_ENABLED,
+            "backup_is_postgres": backup_module.is_postgres(),
+        },
+    )
+
+
+@app.post("/backup/run")
+def backup_run(request: Request, session: Session = Depends(get_session)):
+    from .auth import get_admin_or_redirect
+    user, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
+    try:
+        backup_module.perform_backup_and_rotate(BASE_DIR, STORAGE_DIR)
+    except Exception as exc:
+        logger.exception("Sauvegarde manuelle échouée")
+        return RedirectResponse(f"/backup/history?{urlencode({'error': str(exc)})}", status_code=303)
+    return RedirectResponse("/backup/history?ok=1", status_code=303)
+
+
+@app.get("/backup/download/{filename}")
+def backup_download(filename: str, request: Request, session: Session = Depends(get_session)):
+    from .auth import get_admin_or_redirect
+    _, redirect = get_admin_or_redirect(request, session)
+    if redirect:
+        return redirect
+    safe_name = Path(filename).name
+    if not safe_name.startswith("rescuegrid_") or safe_name != filename:
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+    target = (STORAGE_DIR / "backups" / safe_name).resolve()
+    backups_dir = (STORAGE_DIR / "backups").resolve()
+    if not str(target).startswith(str(backups_dir)) or not target.exists():
+        raise HTTPException(status_code=404, detail="Sauvegarde introuvable")
+
+    def iterfile():
+        with open(target, "rb") as f:
+            yield from f
+    return StreamingResponse(iterfile(), media_type="application/octet-stream",
+                             headers={"Content-Disposition": f"attachment; filename={safe_name}"})
 
 
 @app.get("/storage/{file_path:path}")

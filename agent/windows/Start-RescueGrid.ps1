@@ -12,11 +12,61 @@
 
 param(
     [string]$BackupRoot = "X:\Interventions",
-    [string]$RescueGridAgent = "$PSScriptRoot\Invoke-RescueGrid.ps1"
+    [string]$RescueGridAgent = "$PSScriptRoot\Invoke-RescueGrid.ps1",
+    [string]$DashboardUploadUrl,
+    [string]$UploadApiKey,
+    [string]$RescueGridEnvPath
 )
 
 $ErrorActionPreference = "Continue"
 $host.UI.RawUI.WindowTitle = "Restor-PC RescueGrid - WinPE Atelier"
+
+function Import-RescueGridEnv {
+    <# Voir Invoke-RescueGrid.ps1 pour le detail : charge rescuegrid.env (clé USB
+       ou dossier du script) et retourne un hashtable des variables RESCUEGRID_*. #>
+    param([string]$ExplicitPath)
+
+    $result = @{}
+    $candidates = @()
+    if ($ExplicitPath) { $candidates += $ExplicitPath }
+    if ($env:RESCUEGRID_ENV_PATH) { $candidates += $env:RESCUEGRID_ENV_PATH }
+    if ($PSScriptRoot) {
+        $candidates += Join-Path $PSScriptRoot "..\..\config\rescuegrid.env"
+        $candidates += Join-Path $PSScriptRoot "rescuegrid.env"
+    }
+    foreach ($path in $candidates) {
+        if ($path -and (Test-Path $path -PathType Leaf)) {
+            try {
+                Get-Content -Path $path -Encoding UTF8 -ErrorAction Stop | ForEach-Object {
+                    $line = $_.Trim()
+                    if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+                        $parts = $line.Split("=", 2)
+                        $result[$parts[0].Trim()] = $parts[1].Trim()
+                    }
+                }
+                Write-Host "[CONFIG] rescuegrid.env chargé : $path" -ForegroundColor DarkGray
+                return $result
+            } catch {
+                Write-Host "[CONFIG] Lecture impossible de $path : $_" -ForegroundColor Yellow
+            }
+        }
+    }
+    return $result
+}
+
+$RescueGridConfig = Import-RescueGridEnv -ExplicitPath $RescueGridEnvPath
+if (-not $PSBoundParameters.ContainsKey('BackupRoot') -and $RescueGridConfig.ContainsKey('RESCUEGRID_BACKUP_ROOT')) {
+    $BackupRoot = $RescueGridConfig['RESCUEGRID_BACKUP_ROOT']
+}
+if (-not $DashboardUploadUrl -and $RescueGridConfig.ContainsKey('RESCUEGRID_DASHBOARD_URL')) {
+    $DashboardUploadUrl = "{0}/upload" -f $RescueGridConfig['RESCUEGRID_DASHBOARD_URL'].TrimEnd('/')
+}
+if (-not $UploadApiKey -and $RescueGridConfig.ContainsKey('RESCUEGRID_UPLOAD_API_KEY')) {
+    $UploadApiKey = $RescueGridConfig['RESCUEGRID_UPLOAD_API_KEY']
+}
+if ($DashboardUploadUrl) {
+    Write-Host "[CONFIG] Upload automatique vers $DashboardUploadUrl" -ForegroundColor DarkGray
+}
 
 # Fonctions utilitaires WinPE
 function Get-WinPEDisks {
@@ -152,6 +202,8 @@ function Invoke-Diagnostic {
         if ($offlinePath) {
             $params += "-OfflineWindowsPath", $offlinePath
         }
+        if ($DashboardUploadUrl) { $params += "-DashboardUploadUrl", $DashboardUploadUrl }
+        if ($UploadApiKey) { $params += "-UploadApiKey", $UploadApiKey }
         powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
     }
     else {
@@ -215,6 +267,8 @@ function Invoke-Backup {
         if ($essential -eq "O" -or $essential -eq "o") {
             $params += "-BackupEssentialFoldersOnly"
         }
+        if ($DashboardUploadUrl) { $params += "-DashboardUploadUrl", $DashboardUploadUrl }
+        if ($UploadApiKey) { $params += "-UploadApiKey", $UploadApiKey }
         powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
     }
     else {
@@ -296,7 +350,10 @@ function Invoke-Report {
     $clientName = Read-Host "Nom du client"
     
     if (Test-Path -LiteralPath $RescueGridAgent) {
-        powershell -ExecutionPolicy Bypass -File $RescueGridAgent -ClientName $clientName -BackupRoot $BackupRoot
+        $params = @("-ClientName", $clientName, "-BackupRoot", $BackupRoot)
+        if ($DashboardUploadUrl) { $params += "-DashboardUploadUrl", $DashboardUploadUrl }
+        if ($UploadApiKey) { $params += "-UploadApiKey", $UploadApiKey }
+        powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
     }
     else {
         Write-Host "[ERREUR] Agent introuvable." -ForegroundColor Red
@@ -345,7 +402,10 @@ function Invoke-Offline {
     $offlinePath = $windowsList[[int]$idx - 1].windows_path
     
     if (Test-Path -LiteralPath $RescueGridAgent) {
-        powershell -ExecutionPolicy Bypass -File $RescueGridAgent -ClientName $clientName -BackupRoot $BackupRoot -OfflineWindowsPath $offlinePath -CreateZip
+        $params = @("-ClientName", $clientName, "-BackupRoot", $BackupRoot, "-OfflineWindowsPath", $offlinePath, "-CreateZip")
+        if ($DashboardUploadUrl) { $params += "-DashboardUploadUrl", $DashboardUploadUrl }
+        if ($UploadApiKey) { $params += "-UploadApiKey", $UploadApiKey }
+        powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
     }
     else {
         Write-Host "[MODE DEGRADE] Copie manuelle des artefacts..." -ForegroundColor Yellow
