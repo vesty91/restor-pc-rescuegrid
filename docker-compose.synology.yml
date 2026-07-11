@@ -90,6 +90,12 @@ services:
       # dans .env une fois un certificat TLS actif.
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       STORAGE_PATH: /app/storage
+    # Port lié à 127.0.0.1 uniquement : permet au Reverse Proxy natif de DSM
+    # (qui tourne sur le NAS lui-même) d'atteindre le backend directement en
+    # http://127.0.0.1:8000, sans passer par le conteneur nginx ci-dessus —
+    # voir docs/SYNOLOGY_DEPLOY.md étape 5 (voie recommandée sur Synology).
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./volumes/storage:/app/storage
       - ./volumes/reports:/app/reports

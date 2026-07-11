@@ -116,25 +116,73 @@ docker compose -f docker-compose.synology.yml exec backend alembic upgrade head
 À refaire après chaque mise à jour du projet qui ajoute une migration
 (`alembic/versions/*.py`).
 
-### 5. Configurer nginx (domaine + HTTPS)
+### 5. Configurer le domaine + HTTPS — `espace-client.restor-pc.fr`
 
-`nginx/nginx.conf` définit le reverse proxy. Pour un accès depuis Internet
-(ou même en LAN avec HTTPS) :
+Le domaine `restor-pc.fr` (et `www.`) héberge déjà le site vitrine de
+l'atelier ailleurs (WordPress) — **ne pas le repointer vers le NAS**. Le
+dashboard RescueGrid est exposé sur le sous-domaine dédié
+`espace-client.restor-pc.fr`, à ajouter en DNS chez le registrar/hébergeur
+du domaine (même cible que `nas.restor-pc.fr`, déjà fonctionnel) :
 
-- Renseignez votre nom de domaine ou l'IP du NAS dans la configuration serveur.
-- Placez un certificat dans `./nginx/ssl/` (le montage est déjà prévu dans le
-  compose), ou utilisez le certificat géré par DSM (Let's Encrypt via
-  Panneau de configuration → Sécurité → Certificat) et pointez nginx dessus.
-- `client_max_body_size 2g` est déjà configuré pour accepter les grosses
-  archives ZIP d'intervention.
+```
+espace-client.restor-pc.fr.   CNAME   nas.restor-pc.fr.
+```
+*(ou un enregistrement A vers la même IP publique si `nas.restor-pc.fr` est
+un A plutôt qu'un DDNS).*
+
+Deux façons d'exposer le service en HTTPS — **choisir l'une des deux**, pas
+les deux à la fois (conflit de port 80/443) :
+
+**Option A — Reverse Proxy DSM (recommandée sur Synology)**
+
+Certificat Let's Encrypt géré et renouvelé automatiquement par DSM, sans
+conteneur nginx supplémentaire à maintenir.
+
+1. `docker compose -f docker-compose.synology.yml up -d` (le service
+   `backend` publie déjà `127.0.0.1:8000` sur l'hôte — voir le compose).
+2. DSM → Panneau de configuration → Sécurité → Certificat → **Ajouter** →
+   Let's Encrypt → domaine `espace-client.restor-pc.fr`.
+3. DSM → Panneau de configuration → Portail de connexion → Avancé →
+   **Reverse Proxy** → Créer :
+   - Source : HTTPS, `espace-client.restor-pc.fr`, port 443.
+   - Destination : HTTP, `localhost`, port 8000.
+   - Onglet "En-tête personnalisé" : ajouter `X-Forwarded-Proto = https`
+     (nécessaire pour que l'application sache qu'elle est servie en HTTPS).
+4. Associer le certificat Let's Encrypt créé à l'étape 2 à ce Reverse Proxy
+   (DSM → Certificat → ... → Configurer les services, ou directement dans
+   les paramètres du Reverse Proxy selon la version de DSM).
+5. Ne pas démarrer le service `nginx` du compose dans ce cas (`docker compose
+   -f docker-compose.synology.yml up -d --scale nginx=0`, ou retirer le
+   service `nginx` du fichier si l'option A est définitive).
+
+**Option B — Conteneur nginx du compose (si ports 80/443 libres sur le NAS)**
+
+1. Obtenir un certificat pour `espace-client.restor-pc.fr` (Let's Encrypt via
+   DSM comme ci-dessus, puis exporter `cert.pem`/`key.pem` dans `./nginx/ssl/`,
+   ou `certbot` en mode standalone/DNS).
+2. Dans `nginx/nginx.conf` : décommenter le bloc HTTPS (`listen 443 ssl`) et
+   la ligne `return 301 https://$host$request_uri;` du bloc port 80.
+3. `docker compose -f docker-compose.synology.yml restart nginx`.
+
+Dans les deux cas, une fois le HTTPS actif, définir dans `.env` :
+
+```
+COOKIE_SECURE=true
+OAUTH_REDIRECT_BASE_URL=https://espace-client.restor-pc.fr
+```
+
+`client_max_body_size 2g` est déjà configuré (nginx du compose) pour
+accepter les grosses archives ZIP d'intervention ; en option A, la limite
+équivalente côté DSM Reverse Proxy est généralement suffisante par défaut
+mais peut être ajustée si des imports volumineux échouent (413).
 
 ### 6. Configurer chaque poste technicien (mode multi-poste)
 
 Chaque poste technicien doit pointer son agent vers l'URL réseau du NAS
 plutôt que `localhost` :
 
-- Lors de la création de la clé USB : `-DashboardUrl "http://<ip-nas>:8000"`
-  (ou l'URL nginx/domaine).
+- Lors de la création de la clé USB : `-DashboardUrl "https://espace-client.restor-pc.fr"`
+  une fois HTTPS actif (étape 5), ou `http://<ip-nas>:8000` en LAN sans HTTPS.
 - Lors d'un envoi manuel (`start_agent_windows.bat` → option 5, 8) ou d'une
   tâche planifiée (voir [BACKUP_PLANIFIE.md](BACKUP_PLANIFIE.md)) : même URL,
   suffixée de `/upload`.

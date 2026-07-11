@@ -297,13 +297,14 @@ def enable_client_portal(
     session.commit()
 
     if _send_email_fn:
+        login_url = f"{oauth.redirect_base()}/client/login"
         body = (
             f"Bonjour {client.name},\n\n"
             "Votre espace client Restor-PC est maintenant actif. Vous pouvez y consulter "
             "vos devis, factures et interventions.\n\n"
             f"Identifiant : {email_clean}\n"
             f"Mot de passe temporaire : {temp_password}\n\n"
-            "Connectez-vous ici : /client/login (à remplacer par l'URL publique de l'atelier)\n"
+            f"Connectez-vous ici : {login_url}\n"
             "Nous vous recommandons de changer ce mot de passe dès votre première connexion.\n\n"
             "Cordialement,\nRESTOR-PC\ncontact@restor-pc.fr"
         )
@@ -349,11 +350,13 @@ def reset_client_portal_password(client_id: int, request: Request, session: Sess
 
     if _send_email_fn:
         client = account.client
+        login_url = f"{oauth.redirect_base()}/client/login"
         body = (
             f"Bonjour {client.name if client else ''},\n\n"
             f"Votre mot de passe d'accès à l'espace client Restor-PC a été réinitialisé.\n\n"
             f"Identifiant : {account.email}\n"
             f"Nouveau mot de passe temporaire : {temp_password}\n\n"
+            f"Connectez-vous ici : {login_url}\n\n"
             "Cordialement,\nRESTOR-PC\ncontact@restor-pc.fr"
         )
         ok, detail = _send_email_fn(

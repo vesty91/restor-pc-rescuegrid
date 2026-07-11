@@ -27,12 +27,15 @@ class OAuthProfile:
     provider_user_id: str
 
 
-def _redirect_base() -> str:
+def redirect_base() -> str:
+    """URL publique de base du dashboard (utilisée pour les callbacks OAuth,
+    et réutilisable partout où un lien absolu vers l'espace client est
+    nécessaire, ex. les emails d'activation — voir routes/client_portal.py)."""
     return os.getenv("OAUTH_REDIRECT_BASE_URL", "http://localhost:8000").rstrip("/")
 
 
 def redirect_uri(provider: str) -> str:
-    return f"{_redirect_base()}/client/auth/{provider}/callback"
+    return f"{redirect_base()}/client/auth/{provider}/callback"
 
 
 def generate_state() -> str:
