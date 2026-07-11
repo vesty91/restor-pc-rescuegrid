@@ -46,4 +46,4 @@ Utiliser le mot de passe d'application Infomaniak, pas forcément le mot de pass
 
 ## Version
 
-v12.3 — espace client (mot de passe / Google / GitHub), planning & RDV, relances devis/factures, export comptable, sauvegarde planifiée, mode multi-poste/Synology, pagination, verrouillage de compte.
+v12.3.1 — espace client (mot de passe / Google / GitHub), planning & RDV, relances devis/factures, export comptable, sauvegarde planifiée, mode multi-poste/Synology, pagination, verrouillage de compte, pipeline ADK WinPE automatisé.

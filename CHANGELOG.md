@@ -1,5 +1,17 @@
 # Changelog
 
+## v12.3.1 — Pipeline ADK WinPE automatisé
+
+- Nouveau script `Build-RescueGridWinPE.ps1` : construit automatiquement
+  `boot.wim` (copype + ajout WinPE-WMI/NetFx/Scripting/PowerShell/StorageWMI/
+  DismCmdlets + personnalisation `startnet.cmd`) et génère optionnellement une
+  ISO bootable (`-BuildIso`), à partir d'un Windows ADK installé localement.
+- Raccourci `start_build_winpe.bat` et carte dédiée dans `tools.html`.
+- Documentation `TECHNICIAN_MANUAL.md` mise à jour (procédure entièrement
+  automatisée, remplace les étapes manuelles précédemment reportées).
+- Pipeline validé réellement sur poste de build : ADK + add-on WinPE installés
+  via winget, `boot.wim` (~480 Mo) et ISO (~535 Mo) générés avec succès.
+
 ## v12.3 — Roadmap v12 priorité 3
 
 - Sauvegarde planifiée serveur (SQLite/pg_dump + rotation, scheduler interne) et agent

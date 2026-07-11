@@ -64,29 +64,71 @@ E:\RescueGrid\
    export rapport, préparation réinstallation, analyse hors ligne, vérification
    intégrité, quitter) fonctionne à l'identique du mode Windows.
 
-## 4. À faire quand le Windows ADK sera installé (reporté)
+## 4. Construire l'image WinPE avec `Build-RescueGridWinPE.ps1`
 
-Le Windows ADK + add-on WinPE n'est pas encore installé sur ce poste de
-build (situation au moment de la rédaction). Une fois disponible :
+Depuis v12.3.1, le pipeline ADK est automatisé et **validé réellement**
+(build effectué et vérifié : `boot.wim` ~480 Mo avec PowerShell/Scripting
+intégrés, ISO ~535 Mo générée avec succès).
 
-1. Installer [Windows ADK](https://learn.microsoft.com/fr-fr/windows-hardware/get-started/adk-install)
-   puis l'add-on **WinPE**.
-2. Construire un environnement WinPE de base (`copype amd64 C:\WinPE`),
-   personnaliser si besoin (pilotes réseau/stockage additionnels via
-   `Add-WindowsDriver`, ajout PowerShell via les Optional Components WinPE-
-   PowerShell/WinPE-NetFx/WinPE-Scripting/WinPE-WMI — requis pour exécuter
-   les scripts `.ps1` de ce projet sous WinPE).
-3. Relancer `Create-RescueGridUSB.ps1 -TargetDrive E: -WinPEBasePath C:\WinPE`
-   pour copier `boot.wim` sur la clé (`RescueGrid\winpe\boot.wim`).
-4. Rendre la clé réellement bootable (`bootsect`/`diskpart` + copie de
-   `boot.wim` en tant qu'image de démarrage, ou génération d'une ISO avec
-   `MakeWinPEMedia /ISO`) — cette étape de "bootabilisation" n'est pas
-   automatisée par ce projet et reste à dérouler manuellement selon la
-   procédure Microsoft standard.
+### 4.1 Installer le Windows ADK (une seule fois)
 
-Ce pipeline de build ADK complet n'est volontairement pas scripté dans ce
-lot (ADK non disponible pour test au moment de l'écriture) — à reprendre
-lorsque l'environnement de build sera prêt.
+```powershell
+winget install --id Microsoft.WindowsADK --silent --accept-package-agreements --accept-source-agreements
+winget install --id Microsoft.WindowsADK.WinPEAddon --silent --accept-package-agreements --accept-source-agreements
+```
+
+Nécessite une invite **administrateur** (chaque commande installe ~1 Go de
+composants ; compter 10-20 minutes selon la connexion). Alternative : les
+installeurs graphiques sont disponibles sur la
+[page officielle Microsoft ADK](https://learn.microsoft.com/fr-fr/windows-hardware/get-started/adk-install).
+
+### 4.2 Construire `boot.wim` (+ ISO optionnelle)
+
+Depuis `agent\windows\`, en PowerShell **administrateur** (le montage/démontage
+DISM le requiert) :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Build-RescueGridWinPE.ps1 -Force -BuildIso
+```
+
+Le script :
+1. Lance `copype amd64 C:\WinPE` (staging + copie de `boot.wim`) ;
+2. Monte `boot.wim` et ajoute dans l'ordre les composants optionnels
+   `WinPE-WMI`, `WinPE-NetFx`, `WinPE-Scripting`, `WinPE-PowerShell`,
+   `WinPE-StorageWMI`, `WinPE-DismCmdlets` (ordre de dépendances Microsoft) ;
+3. Personnalise `startnet.cmd` : détection automatique de la première lettre
+   de lecteur contenant `RescueGrid\agent\windows\Start-RescueGrid.ps1` et
+   lancement automatique du menu ;
+4. Démonte et sauvegarde `boot.wim` (ou annule proprement — `/Discard` — en
+   cas d'erreur à une étape) ;
+5. Si `-BuildIso` : génère `C:\WinPE\RescueGridWinPE.iso` via `MakeWinPEMedia /ISO`
+   (utilisable en VM, gravure DVD, ou un autre outil de création de clé).
+
+Paramètres : `-WinPERoot` (défaut `C:\WinPE`), `-Arch` (`amd64`/`x86`/`arm`/`arm64`),
+`-Force` (reconstruit un dossier existant), `-BuildIso`, `-IsoPath`.
+
+Raccourci équivalent : `start_build_winpe.bat` à la racine du projet (à lancer
+en administrateur — clic droit → Exécuter en tant qu'administrateur).
+
+### 4.3 Copier `boot.wim` sur la clé USB technicien
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Create-RescueGridUSB.ps1 -TargetDrive E: -WinPEBasePath C:\WinPE
+```
+
+`Create-RescueGridUSB.ps1` copie automatiquement `C:\WinPE\media\sources\boot.wim`
+vers `RescueGrid\winpe\boot.wim` sur la clé (voir §1).
+
+### 4.4 Rendre la clé réellement bootable (hors script)
+
+La copie de `boot.wim` sur la clé (§4.3) suffit pour le PXE (§5) et pour une
+image ISO montée en VM. Pour une clé USB **bootable en BIOS/UEFI direct**,
+il faut en plus déployer les fichiers de démarrage générés par `copype` dans
+`C:\WinPE\media` (dossiers `Boot`, `EFI`, `bootmgr`...) sur la clé, ou utiliser
+`MakeWinPEMedia /UFD C:\WinPE E:` (efface la clé et la rend bootable en une
+commande, disponible avec l'ADK) — cette dernière option écrase toute donnée
+existante sur `E:` et n'est pas appelée automatiquement par ce projet pour
+éviter une perte de données accidentelle.
 
 ## 5. Serveur PXE (boot réseau, sans clé USB)
 
