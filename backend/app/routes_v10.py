@@ -30,9 +30,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .auth import get_admin_or_redirect, get_user_or_redirect, hash_password, log_activity
+from .auth import get_admin_or_redirect, get_user_or_redirect, hash_password, log_activity, validate_password_strength
 from .database import get_session
-from .helpers import generate_ai_summary, quote_html, invoice_html, render_document_pdf, try_pdf_response
+from .helpers import generate_ai_summary, quote_html, invoice_html, paginate_query, render_document_pdf, try_pdf_response
 from .models import ActivityLog, Client, Intervention, InterventionPart, InterventionPhoto, Invoice, Part, Quote, Ticket, User
 
 logger = logging.getLogger(__name__)
@@ -108,15 +108,17 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
 
 
     @router.get("/quotes", response_class=HTMLResponse)
-    def quotes_list(request: Request, session: Session = Depends(get_session)):
+    def quotes_list(request: Request, page: int = 1, session: Session = Depends(get_session)):
         user, redirect = get_user_or_redirect(request, session)
         if redirect:
             return redirect
-        quotes = session.scalars(select(Quote).order_by(Quote.created_at.desc())).all()
+        query = select(Quote).order_by(Quote.created_at.desc())
+        quotes, page, total_pages, total_items = paginate_query(session, query, page)
         interventions = session.scalars(select(Intervention).order_by(Intervention.created_at.desc())).all()
         return templates.TemplateResponse("quotes.html", {"active_page": "quotes", 
             "request": request, "quotes": quotes, "interventions": interventions, "user": user,
             "default_billing_amount": _default_billing_amount, "default_due_date": _default_due_date,
+            "page": page, "total_pages": total_pages, "total_items": total_items,
         })
 
     @router.post("/quotes")
@@ -124,7 +126,6 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
         request: Request,
         intervention_id: int = Form(...),
         amount: float = Form(0.0),
-        tax: float = Form(0.0),
         description: str = Form(""),
         status: str = Form("draft"),
         valid_until: str = Form(""),
@@ -554,9 +555,10 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
             return templates.TemplateResponse("settings.html", {"active_page": "settings", 
                 "request": request, "user": user, "message": None, "error": "Les mots de passe ne correspondent pas.",
             })
-        if len(new_password) < 8:
+        password_error = validate_password_strength(new_password, user.username)
+        if password_error:
             return templates.TemplateResponse("settings.html", {"active_page": "settings", 
-                "request": request, "user": user, "message": None, "error": "Minimum 8 caractères.",
+                "request": request, "user": user, "message": None, "error": password_error,
             })
         if not verify_password(current_password, user.hashed_password):
             return templates.TemplateResponse("settings.html", {"active_page": "settings", 
@@ -593,6 +595,12 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
             users = session.scalars(select(User).order_by(User.created_at.desc())).all()
             return templates.TemplateResponse("users.html", {"active_page": "users", 
                 "request": request, "users": users, "user": admin, "error": "Identifiant déjà utilisé.",
+            })
+        password_error = validate_password_strength(password, username)
+        if password_error:
+            users = session.scalars(select(User).order_by(User.created_at.desc())).all()
+            return templates.TemplateResponse("users.html", {"active_page": "users", 
+                "request": request, "users": users, "user": admin, "error": password_error,
             })
         if role not in {"admin", "technicien"}:
             role = "technicien"

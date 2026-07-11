@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from ..database import get_session
 from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
+from ..helpers import paginate_query
 from ..models import Intervention, Invoice
 
 logger = logging.getLogger(__name__)
@@ -40,11 +41,12 @@ def init_router(templates, next_doc_fn, billing_fn) -> APIRouter:
 # ── Page liste factures ───────────────────────────────────────────────────────
 
 @router.get("/invoices", response_class=HTMLResponse)
-def invoices_list(request: Request, session: Session = Depends(get_session)):
+def invoices_list(request: Request, page: int = 1, session: Session = Depends(get_session)):
     user, redirect = get_user_or_redirect(request, session)
     if redirect:
         return redirect
-    invoices = session.scalars(select(Invoice).order_by(Invoice.created_at.desc())).all()
+    query = select(Invoice).order_by(Invoice.created_at.desc())
+    invoices, page, total_pages, total_items = paginate_query(session, query, page)
     interventions = session.scalars(select(Intervention).order_by(Intervention.created_at.desc())).all()
     return _templates.TemplateResponse("invoices.html", {
         "request": request,
@@ -54,6 +56,9 @@ def invoices_list(request: Request, session: Session = Depends(get_session)):
         "interventions": interventions,
         "default_billing_amount": _default_billing_amount,
         "today_date": lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
     })
 
 
@@ -65,7 +70,6 @@ def create_invoice(
     intervention_id: int = Form(...),
     notes: str = Form(""),
     amount: float = Form(...),
-    tax: float = Form(0.0),
     due_date: str = Form(""),
     status: str = Form("draft"),
     session: Session = Depends(get_session),

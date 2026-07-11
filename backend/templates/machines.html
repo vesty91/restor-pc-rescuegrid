@@ -6,7 +6,7 @@
 {% block content %}
 <div class="page-header">
   <h1>Machines</h1>
-  <p>{{ machines|length }} machine(s) enregistrée(s) — identifiées par le numéro de série BIOS.</p>
+  <p>{{ total_items if total_items is defined else machines|length }} machine(s) enregistrée(s) — identifiées par le numéro de série BIOS.</p>
 </div>
 
 <div class="grid2">
@@ -52,6 +52,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% include "_pagination.html" %}
     {% else %}
     <div class="empty">Aucune machine enregistrée. Les machines sont créées automatiquement lors de l'import d'une archive ZIP.</div>
     {% endif %}

@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from ..database import get_session
 from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
+from ..helpers import paginate_query
 from ..models import Intervention, Machine
 
 router = APIRouter()
@@ -36,18 +37,20 @@ def init_router(templates: Jinja2Templates, hardware_fn) -> APIRouter:
 # ── Pages ────────────────────────────────────────────────────────────────────
 
 @router.get("/machines", response_class=HTMLResponse)
-def machines_list(request: Request, session: Session = Depends(get_session)):
+def machines_list(request: Request, page: int = 1, session: Session = Depends(get_session)):
     user, redirect = get_user_or_redirect(request, session)
     if redirect:
         return redirect
-    machines = session.scalars(
-        select(Machine).order_by(Machine.last_intervention.desc().nulls_last())
-    ).all()
+    query = select(Machine).order_by(Machine.last_intervention.desc().nulls_last())
+    machines, page, total_pages, total_items = paginate_query(session, query, page)
     return _templates.TemplateResponse("machines.html", {
         "request": request,
         "user": user,
         "active_page": "machines",
         "machines": machines,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
     })
 
 

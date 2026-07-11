@@ -4,6 +4,7 @@ Roles : admin, technicien
 """
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -24,6 +25,29 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "480"))
 
 BCRYPT_ROUNDS = 12
+
+
+PASSWORD_MIN_LENGTH = 10
+
+
+def validate_password_strength(password: str, username: str | None = None) -> Optional[str]:
+    """Vérifie la robustesse d'un mot de passe (création ou changement).
+
+    Retourne un message d'erreur (str) si le mot de passe est trop faible,
+    ou None s'il respecte la politique :
+      - au moins 10 caractères,
+      - au moins une lettre et un chiffre,
+      - différent du nom d'utilisateur.
+    """
+    if len(password) < PASSWORD_MIN_LENGTH:
+        return f"Le mot de passe doit contenir au moins {PASSWORD_MIN_LENGTH} caractères."
+    if not re.search(r"[A-Za-z]", password):
+        return "Le mot de passe doit contenir au moins une lettre."
+    if not re.search(r"\d", password):
+        return "Le mot de passe doit contenir au moins un chiffre."
+    if username and password.lower() == username.lower():
+        return "Le mot de passe ne doit pas être identique à l'identifiant."
+    return None
 
 
 def hash_password(password: str) -> str:

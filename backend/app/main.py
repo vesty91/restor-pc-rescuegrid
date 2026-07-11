@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZipFile
 
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -62,6 +62,14 @@ REPORT_DIR.mkdir(parents=True, exist_ok=True)
 LOGIN_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
 LOGIN_RATE_LIMIT_COUNT = int(os.getenv("LOGIN_RATE_LIMIT_COUNT", "5"))
 LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
+
+# Verrouillage de compte par nom d'utilisateur — en complément du rate limit par IP
+# ci-dessus. Une attaque par brute force distribuée (plusieurs IP, même compte) n'est
+# pas freinée par le seul rate limit IP : ce second compteur, indexé par identifiant,
+# verrouille le compte visé quelle que soit l'origine des tentatives.
+ACCOUNT_LOCKOUT_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
+ACCOUNT_LOCKOUT_COUNT = int(os.getenv("ACCOUNT_LOCKOUT_COUNT", "5"))
+ACCOUNT_LOCKOUT_WINDOW_SECONDS = int(os.getenv("ACCOUNT_LOCKOUT_WINDOW_SECONDS", "900"))
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -379,6 +387,17 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
+def pagination_query(request: Request, page: int) -> str:
+    """Construit l'URL de la page courante avec un numéro de page différent,
+    en conservant les autres filtres (q, status, sort...) déjà dans l'URL."""
+    params = dict(request.query_params)
+    params["page"] = str(page)
+    return f"{request.url.path}?{urlencode(params)}"
+
+
+templates.env.globals["pagination_query"] = pagination_query
+
+
 # ── Protection anti-CSRF (vérification d'origine) ──────────────────────────────
 # L'authentification repose sur un cookie de session (JWT). Pour les requêtes de
 # mutation (POST/PUT/PATCH/DELETE) envoyées par un navigateur, on vérifie que
@@ -474,13 +493,28 @@ async def login_post(
         logger.warning("Rate limit login dépassé pour IP %s", client_ip)
         return templates.TemplateResponse("login.html", {"request": request, "error": "Trop de tentatives. Réessayez dans 5 minutes."}, status_code=429)
 
+    username_key = username.lower()
+    account_attempts = ACCOUNT_LOCKOUT_ATTEMPTS[username_key]
+    while account_attempts and now - account_attempts[0] > ACCOUNT_LOCKOUT_WINDOW_SECONDS:
+        account_attempts.popleft()
+    if username_key and len(account_attempts) >= ACCOUNT_LOCKOUT_COUNT:
+        logger.warning("Compte verrouillé temporairement après échecs répétés : %s", username)
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": "Compte temporairement verrouillé suite à plusieurs échecs. Réessayez dans quelques minutes."},
+            status_code=429,
+        )
+
     user = authenticate_user(username, password, session)
     if not user:
         attempts.append(now)
+        if username_key:
+            account_attempts.append(now)
         logger.warning("Échec connexion pour %s depuis %s", username, client_ip)
         return templates.TemplateResponse("login.html", {"request": request, "error": "Identifiant ou mot de passe incorrect."})
 
     LOGIN_ATTEMPTS.pop(client_ip, None)
+    ACCOUNT_LOCKOUT_ATTEMPTS.pop(username_key, None)
     logger.info("Connexion réussie : %s depuis %s", username, client_ip)
     token = create_access_token({"sub": user.username})
     response = RedirectResponse("/", status_code=303)

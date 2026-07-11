@@ -46,7 +46,7 @@
   </div>
 
   <div class="card">
-    <h2>Tickets ({{ tickets|length }})</h2>
+    <h2>Tickets ({{ total_items if total_items is defined else tickets|length }})</h2>
     {% if tickets %}
     <table>
       <thead><tr><th>Titre</th><th>Client</th><th>Priorité</th><th>Statut</th><th>Date</th><th></th></tr></thead>
@@ -82,6 +82,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% include "_pagination.html" %}
     {% else %}
     <div class="empty">Aucun ticket pour le moment.</div>
     {% endif %}

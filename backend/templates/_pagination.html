@@ -1,0 +1,15 @@
+{% if total_pages and total_pages > 1 %}
+<div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:16px">
+  {% if page > 1 %}
+  <a class="btn btn-secondary btn-sm" href="{{ pagination_query(request, page - 1) }}">← Précédent</a>
+  {% else %}
+  <span class="btn btn-secondary btn-sm" style="opacity:.4;pointer-events:none">← Précédent</span>
+  {% endif %}
+  <span class="hint">Page {{ page }} / {{ total_pages }}{% if total_items is defined %} — {{ total_items }} résultat(s){% endif %}</span>
+  {% if page < total_pages %}
+  <a class="btn btn-secondary btn-sm" href="{{ pagination_query(request, page + 1) }}">Suivant →</a>
+  {% else %}
+  <span class="btn btn-secondary btn-sm" style="opacity:.4;pointer-events:none">Suivant →</span>
+  {% endif %}
+</div>
+{% endif %}

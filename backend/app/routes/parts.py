@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from ..database import get_session
 from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
+from ..helpers import paginate_query
 from ..models import Part
 
 router = APIRouter()
@@ -29,16 +30,20 @@ def init_router(templates: Jinja2Templates) -> APIRouter:
 
 
 @router.get("/parts", response_class=HTMLResponse)
-def parts_list(request: Request, session: Session = Depends(get_session)):
+def parts_list(request: Request, page: int = 1, session: Session = Depends(get_session)):
     user, redirect = get_user_or_redirect(request, session)
     if redirect:
         return redirect
-    parts = session.scalars(select(Part).order_by(Part.part_type, Part.brand)).all()
+    query = select(Part).order_by(Part.part_type, Part.brand)
+    parts, page, total_pages, total_items = paginate_query(session, query, page)
     return _templates.TemplateResponse("parts.html", {
         "request": request,
         "user": user,
         "active_page": "parts",
         "parts": parts,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
     })
 
 

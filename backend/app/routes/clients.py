@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from ..database import get_session
 from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
+from ..helpers import paginate_query
 from ..models import Client, Intervention
 
 router = APIRouter()
@@ -35,16 +36,20 @@ def init_router(templates: Jinja2Templates) -> APIRouter:
 # ── Pages ────────────────────────────────────────────────────────────────────
 
 @router.get("/clients", response_class=HTMLResponse)
-def clients_list(request: Request, session: Session = Depends(get_session)):
+def clients_list(request: Request, page: int = 1, session: Session = Depends(get_session)):
     user, redirect = get_user_or_redirect(request, session)
     if redirect:
         return redirect
-    clients = session.scalars(select(Client).order_by(Client.created_at.desc())).all()
+    query = select(Client).order_by(Client.created_at.desc())
+    clients, page, total_pages, total_items = paginate_query(session, query, page)
     return _templates.TemplateResponse("clients.html", {
         "request": request,
         "user": user,
         "active_page": "clients",
         "clients": clients,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
     })
 
 

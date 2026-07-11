@@ -272,7 +272,6 @@ def test_create_quote() -> None:
     r = client.post("/quotes", data={
         "intervention_id": intervention.id,
         "amount": "50",
-        "tax": "10",
         "description": "Test devis",
         "status": "draft",
     }, follow_redirects=False)

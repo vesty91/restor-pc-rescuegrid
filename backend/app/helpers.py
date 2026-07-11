@@ -978,6 +978,25 @@ def generate_ai_summary(intervention: Intervention, folder: Path | None) -> str:
     return "\n".join(lines)
 
 
+DEFAULT_PAGE_SIZE = 25
+
+
+def paginate_query(session, query, page: int = 1, page_size: int = DEFAULT_PAGE_SIZE):
+    """Pagine une requête SQLAlchemy Select.
+
+    Retourne (items_de_la_page, page_normalisee, total_pages, total_items).
+    `page` est ramené dans les bornes [1, total_pages] pour éviter les pages
+    vides ou négatives en cas de paramètre invalide dans l'URL.
+    """
+    from sqlalchemy import func, select
+
+    total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+    total_pages = max(1, -(-total // page_size))  # ceil division
+    page = max(1, min(page, total_pages))
+    items = session.scalars(query.limit(page_size).offset((page - 1) * page_size)).all()
+    return items, page, total_pages, total
+
+
 def apply_intervention_filters(query, status: str | None, sort: str | None):
     from .models import Intervention
 

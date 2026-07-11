@@ -39,7 +39,7 @@
   </div>
 
   <div class="card">
-    <h2>Stock ({{ parts|length }} références)</h2>
+    <h2>Stock ({{ total_items if total_items is defined else parts|length }} références)</h2>
     {% if parts %}
     <table>
       <thead><tr><th>Type</th><th>Marque / Modèle</th><th>Capacité</th><th>Stock</th><th></th></tr></thead>
@@ -63,6 +63,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% include "_pagination.html" %}
     {% else %}
     <div class="empty">Aucune pièce en stock.</div>
     {% endif %}

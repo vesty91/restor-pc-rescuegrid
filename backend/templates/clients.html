@@ -6,7 +6,7 @@
 {% block content %}
 <div class="page-header">
   <h1>Clients</h1>
-  <p>{{ clients|length }} client(s) enregistré(s) dans l'atelier.</p>
+  <p>{{ total_items if total_items is defined else clients|length }} client(s) enregistré(s) dans l'atelier.</p>
 </div>
 
 <div class="grid2">
@@ -54,6 +54,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% include "_pagination.html" %}
     {% else %}
     <div class="empty">Aucun client enregistré.</div>
     {% endif %}

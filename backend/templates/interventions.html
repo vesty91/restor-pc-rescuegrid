@@ -6,7 +6,7 @@
 {% block content %}
 <div class="page-header">
   <h1>Interventions</h1>
-  <p>{{ interventions|length }} intervention(s) — importez une archive ZIP agent ou créez manuellement.</p>
+  <p>{{ total_items if total_items is defined else interventions|length }} intervention(s) — importez une archive ZIP agent ou créez manuellement.</p>
 </div>
 
 <!-- Filtres -->
@@ -82,7 +82,7 @@
 
   <!-- Liste -->
   <div class="card">
-    <h2>Liste ({{ interventions|length }})</h2>
+    <h2>Liste ({{ total_items if total_items is defined else interventions|length }})</h2>
     {% if interventions %}
     <table>
       <thead><tr><th>Date</th><th>Client / Machine</th><th>Score</th><th>Disque</th><th>Statut</th><th></th></tr></thead>
@@ -129,6 +129,7 @@
       <a href="/export/interventions.xlsx" class="btn btn-secondary btn-sm">⬇ Export Excel</a>
       <a href="/export/interventions.csv" class="btn btn-secondary btn-sm">⬇ Export CSV</a>
     </div>
+    {% include "_pagination.html" %}
     {% else %}
     <div class="empty">Aucune intervention{% if search_query or filter_status %} correspondant aux filtres{% endif %}.</div>
     {% endif %}

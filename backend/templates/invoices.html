@@ -29,10 +29,7 @@
         </select>
         <label>Désignation client</label>
         <input name="notes" value="Diagnostic atelier, contrôle système et intervention Restor-PC.">
-        <div class="grid2">
-          <div><label>Montant (€)</label><input name="amount" type="number" step="0.01" value="{% if interventions %}{{ '%.2f'|format(default_billing_amount(interventions[0])) }}{% else %}60.00{% endif %}" required></div>
-          <div><input type="hidden" name="tax" value="0"></div>
-        </div>
+        <label>Montant (€)</label><input name="amount" type="number" step="0.01" value="{% if interventions %}{{ '%.2f'|format(default_billing_amount(interventions[0])) }}{% else %}60.00{% endif %}" required>
         <div class="grid2">
           <div><label>Échéance</label><input name="due_date" type="date" value="{{ today_date() if today_date else '' }}"></div>
           <div><label>Statut</label>
@@ -50,7 +47,7 @@
   </div>
 
   <div class="card">
-    <h2>Factures ({{ invoices|length }})</h2>
+    <h2>Factures ({{ total_items if total_items is defined else invoices|length }})</h2>
     {% if invoices %}
     <table>
       <thead><tr><th>N°</th><th>Date</th><th>Client</th><th>Total</th><th>Statut</th><th></th></tr></thead>
@@ -102,6 +99,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% include "_pagination.html" %}
     {% else %}
     <div class="empty">Aucune facture pour le moment.</div>
     {% endif %}

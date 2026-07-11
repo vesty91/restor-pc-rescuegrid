@@ -16,7 +16,8 @@
     <h2>Nouveau technicien</h2>
     <form action="/users" method="post">
       <label>Identifiant</label><input name="username" required>
-      <label>Mot de passe</label><input name="password" type="password" required minlength="8">
+      <label>Mot de passe</label><input name="password" type="password" required minlength="10">
+      <p class="hint" style="margin:4px 0 0">10 caractères minimum, au moins une lettre et un chiffre.</p>
       <label>Nom complet</label><input name="full_name">
       <label>Rôle</label>
       <select name="role">

@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 from ..database import get_session
 from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
-from ..helpers import apply_intervention_filters, generate_ai_summary
+from ..helpers import apply_intervention_filters, generate_ai_summary, paginate_query
 from ..models import Client, Intervention, Machine, Part, Quote, Invoice
 
 logger = logging.getLogger(__name__)
@@ -83,6 +83,7 @@ def interventions_list(
     status: str = "",
     sort: str = "",
     q: str = "",
+    page: int = 1,
     session: Session = Depends(get_session),
 ):
     user, redirect = get_user_or_redirect(request, session)
@@ -90,17 +91,16 @@ def interventions_list(
         return redirect
 
     if q:
-        query = f"%{q}%"
-        interventions = session.scalars(
-            select(Intervention).where(
-                (Intervention.title.ilike(query))
-                | (Intervention.machine_name.ilike(query))
-                | (Intervention.bios_serial.ilike(query))
-            ).order_by(Intervention.created_at.desc())
-        ).all()
+        like = f"%{q}%"
+        iq = select(Intervention).where(
+            (Intervention.title.ilike(like))
+            | (Intervention.machine_name.ilike(like))
+            | (Intervention.bios_serial.ilike(like))
+        ).order_by(Intervention.created_at.desc())
     else:
         iq = apply_intervention_filters(select(Intervention), status or None, sort or None)
-        interventions = session.scalars(iq).all()
+
+    interventions, page, total_pages, total_items = paginate_query(session, iq, page)
 
     clients = session.scalars(select(Client).order_by(Client.name)).all()
     machines = session.scalars(select(Machine).order_by(Machine.machine_name)).all()
@@ -115,6 +115,9 @@ def interventions_list(
         "filter_status": status,
         "filter_sort": sort,
         "search_query": q,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
         "atelier_statuses": ["nouvelle", "en_attente", "en_cours", "termine", "livre", "facture"],
     })
 
