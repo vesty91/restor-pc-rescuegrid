@@ -108,8 +108,8 @@
     .searchbar input{width:100%;background:#071322}
     .userbar{display:flex;align-items:center;gap:14px}
     .miniLogo{width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--line)}
-    .bell{position:relative;font-size:23px}
-    .bell::after{content:"2";position:absolute;right:-8px;top:-8px;width:18px;height:18px;border-radius:50%;background:#0a84ff;color:white;font-size:11px;display:grid;place-items:center;font-weight:900}
+    .bell{position:relative;font-size:23px;display:inline-block;text-decoration:none;color:inherit}
+    .bellBadge{position:absolute;right:-8px;top:-8px;width:18px;height:18px;border-radius:50%;background:#0a84ff;color:white;font-size:11px;display:grid;place-items:center;font-weight:900}
 
     .metricGrid{display:grid;grid-template-columns:repeat(5,minmax(170px,1fr));gap:16px;margin-bottom:18px}
     .metric{
@@ -265,7 +265,8 @@
         <button>Rechercher</button>
       </form>
       <div class="userbar">
-        <span class="bell">♧</span>
+        {% set bell_n = overdue_count() %}
+        <a class="bell" href="/relances" title="Devis/factures en retard">♧{% if bell_n %}<span class="bellBadge">{{ bell_n }}</span>{% endif %}</a>
         <div style="text-align:right"><strong>RESTOR-PC</strong><br><span class="muted">{{ user.role|capitalize if user else "Administrateur" }}</span></div>
         {% if logo_path %}
           {% if logo_path.startswith('/static/') %}<img class="miniLogo" src="{{ logo_path }}" alt="Logo">{% else %}<img class="miniLogo" src="/storage/{{ logo_path }}" alt="Logo">{% endif %}
