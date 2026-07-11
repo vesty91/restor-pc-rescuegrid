@@ -11,7 +11,7 @@ postes techniciens simultanément (mode multi-poste).
 | Service | Rôle | Port |
 |---|---|---|
 | `postgres` | Base de données (remplace SQLite en production) | interne |
-| `minio` | Stockage S3 compatible (déployé, **non utilisé** par le backend actuellement — voir note ci-dessous) | 9000 / 9001 |
+| `minio` | Stockage S3 compatible (déployé, **non utilisé** par le backend actuellement — voir note ci-dessous) | 19000 / 9001 (hôte, si 9000 est déjà pris) |
 | `backend` | Application FastAPI (dashboard) | interne (derrière nginx) |
 | `nginx` | Reverse proxy HTTP/HTTPS | 80 / 443 |
 | `pgadmin` | Administration PostgreSQL (optionnel) | 5050 |
@@ -99,7 +99,7 @@ Vérifiez la santé des services :
 
 ```bash
 docker compose -f docker-compose.synology.yml ps
-curl http://localhost:8000/health   # depuis le NAS, ou via nginx sur le port 80/443
+curl http://localhost:8080/health   # depuis le NAS, ou via nginx sur le port 80/443
 ```
 
 ### 4. Appliquer les migrations (étape obligatoire, non automatique sur PostgreSQL)
@@ -139,13 +139,15 @@ Certificat Let's Encrypt géré et renouvelé automatiquement par DSM, sans
 conteneur nginx supplémentaire à maintenir.
 
 1. `docker compose -f docker-compose.synology.yml up -d` (le service
-   `backend` publie déjà `127.0.0.1:8000` sur l'hôte — voir le compose).
+   `backend` publie déjà `127.0.0.1:8080` sur l'hôte — voir le compose ;
+   port 8080 et non 8000 si un autre outil comme Portainer occupe déjà
+   ce dernier sur le NAS).
 2. DSM → Panneau de configuration → Sécurité → Certificat → **Ajouter** →
    Let's Encrypt → domaine `espace-client.restor-pc.fr`.
 3. DSM → Panneau de configuration → Portail de connexion → Avancé →
    **Reverse Proxy** → Créer :
    - Source : HTTPS, `espace-client.restor-pc.fr`, port 443.
-   - Destination : HTTP, `localhost`, port 8000.
+   - Destination : HTTP, `localhost`, port 8080.
    - Onglet "En-tête personnalisé" : ajouter `X-Forwarded-Proto = https`
      (nécessaire pour que l'application sache qu'elle est servie en HTTPS).
 4. Associer le certificat Let's Encrypt créé à l'étape 2 à ce Reverse Proxy
@@ -182,7 +184,10 @@ Chaque poste technicien doit pointer son agent vers l'URL réseau du NAS
 plutôt que `localhost` :
 
 - Lors de la création de la clé USB : `-DashboardUrl "https://espace-client.restor-pc.fr"`
-  une fois HTTPS actif (étape 5), ou `http://<ip-nas>:8000` en LAN sans HTTPS.
+  une fois HTTPS actif (étape 5). Le port backend (8080 par défaut, voir le
+  compose) n'est publié que sur `127.0.0.1` du NAS ; pour un accès LAN direct
+  sans HTTPS, changez temporairement ce binding en `0.0.0.0:8080:8000` dans
+  `docker-compose.synology.yml` (déconseillé hors réseau de confiance).
 - Lors d'un envoi manuel (`start_agent_windows.bat` → option 5, 8) ou d'une
   tâche planifiée (voir [BACKUP_PLANIFIE.md](BACKUP_PLANIFIE.md)) : même URL,
   suffixée de `/upload`.

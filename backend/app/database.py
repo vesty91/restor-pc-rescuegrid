@@ -26,6 +26,12 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./rescuegrid.db")
 # Heroku / Railway fournissent parfois postgres:// — SQLAlchemy exige postgresql://
 DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# requirements.txt installe le driver psycopg (v3), pas psycopg2 : sans le
+# suffixe "+psycopg", SQLAlchemy tente d'importer psycopg2 par défaut et
+# plante au démarrage avec ModuleNotFoundError.
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgresql://"):]
+
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args)

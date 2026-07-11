@@ -41,7 +41,7 @@ def _backup_dir(storage_dir: Path) -> Path:
 
 
 def is_postgres() -> bool:
-    return DATABASE_URL.startswith("postgresql://")
+    return DATABASE_URL.startswith("postgresql")
 
 
 def _sqlite_db_path(base_dir: Path) -> Path | None:

@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rescuegrid}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD dans .env (mot de passe fort et unique)}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD dans .env (mot de passe fort et unique)}"
       POSTGRES_DB: ${POSTGRES_DB:-rescuegrid}
     volumes:
       - ./volumes/postgres:/var/lib/postgresql/data
@@ -43,11 +43,11 @@ services:
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Definir MINIO_ROOT_PASSWORD dans .env (mot de passe fort et unique)}
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Definir MINIO_ROOT_PASSWORD dans .env (mot de passe fort et unique)}"
     volumes:
       - ./volumes/minio:/data
     ports:
-      - "127.0.0.1:9000:9000"   # API S3
+      - "127.0.0.1:19000:9000"   # API S3 (19000 : le 9000 est deja pris par Portainer sur ce NAS)
       - "127.0.0.1:9001:9001"   # Console web
     networks:
       - rescuegrid
@@ -82,20 +82,21 @@ services:
     container_name: rescuegrid_backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-rescuegrid}:${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD dans .env}@postgres:5432/${POSTGRES_DB:-rescuegrid}
-      SECRET_KEY: ${SECRET_KEY:?Definir SECRET_KEY dans .env (chaine aleatoire longue, ex: openssl rand -hex 32)}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Definir ADMIN_PASSWORD dans .env (mot de passe fort et unique)}
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-rescuegrid}:${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD dans .env}@postgres:5432/${POSTGRES_DB:-rescuegrid}"
+      SECRET_KEY: "${SECRET_KEY:?Definir SECRET_KEY dans .env, ex. openssl rand -hex 32}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Definir ADMIN_PASSWORD dans .env (mot de passe fort et unique)}"
       # false par defaut pour ne pas casser la connexion tant que HTTPS n'est pas
       # configure sur nginx (etape 5 de docs/SYNOLOGY_DEPLOY.md) — passer a true
       # dans .env une fois un certificat TLS actif.
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       STORAGE_PATH: /app/storage
     # Port lié à 127.0.0.1 uniquement : permet au Reverse Proxy natif de DSM
     # (qui tourne sur le NAS lui-même) d'atteindre le backend directement en
-    # http://127.0.0.1:8000, sans passer par le conteneur nginx ci-dessus —
+    # http://127.0.0.1:8080, sans passer par le conteneur nginx ci-dessus —
     # voir docs/SYNOLOGY_DEPLOY.md étape 5 (voie recommandée sur Synology).
+    # Port hôte 8080 (et non 8000) car 8000 est déjà pris par Portainer sur ce NAS.
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8080:8000"
     volumes:
       - ./volumes/storage:/app/storage
       - ./volumes/reports:/app/reports
@@ -118,8 +119,11 @@ services:
     container_name: rescuegrid_pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@rescuegrid.local}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?Definir PGADMIN_PASSWORD dans .env (mot de passe fort et unique)}
+      # pgAdmin valide strictement le format de l'email et rejette les TLD
+      # reserves comme .local — utilisez PGADMIN_EMAIL dans .env pour une
+      # adresse reelle si besoin (ce compte n'a aucun usage d'envoi de mail).
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@restor-pc.fr}
+      PGADMIN_DEFAULT_PASSWORD: "${PGADMIN_PASSWORD:?Definir PGADMIN_PASSWORD dans .env (mot de passe fort et unique)}"
     ports:
       - "127.0.0.1:5050:80"
     volumes:

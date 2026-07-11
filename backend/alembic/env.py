@@ -33,7 +33,12 @@ target_metadata = Base.metadata
 def get_url() -> str:
     url = os.getenv("DATABASE_URL", "sqlite:///./rescuegrid.db")
     # Heroku / Railway fournissent parfois postgres:// — SQLAlchemy exige postgresql://
-    return url.replace("postgres://", "postgresql://", 1)
+    url = url.replace("postgres://", "postgresql://", 1)
+    # requirements.txt installe le driver psycopg (v3), pas psycopg2 : sans le
+    # suffixe "+psycopg", SQLAlchemy tente d'importer psycopg2 par défaut.
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
 
 
 def run_migrations_offline() -> None:
