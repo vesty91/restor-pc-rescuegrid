@@ -1,5 +1,27 @@
 # Changelog
 
+## v12.3 — Roadmap v12 priorité 3
+
+- Sauvegarde planifiée serveur (SQLite/pg_dump + rotation, scheduler interne) et agent
+  (tâche planifiée Windows, lecture auto de `rescuegrid.env`).
+- Correction du bug de métadonnées `/upload` (lecture d'`inventory.json` au lieu d'un
+  `manifest.json` inexistant) qui cassait la déduplication machine en mode multi-poste.
+- Documentation Synology/multi-poste (`docs/SYNOLOGY_DEPLOY.md`) et manuel technicien
+  USB/WinPE (`docs/TECHNICIAN_MANUAL.md`).
+- Unification des builders de clé USB (`Create-RescueGridUSB.ps1` canonique,
+  `Build-RescueGridUSB.ps1` conservé en alias déprécié).
+
+## v12.2 — Roadmap v12 priorité 2
+
+- Espace client sécurisé (mot de passe, connexion Google et GitHub).
+- Planning / prise de rendez-vous.
+- Relances devis/factures (suggestion manuelle).
+- Export comptable (CSV / Excel).
+- Pagination sur les listes principales (clients, machines, interventions, tickets…).
+- Renforcement de la politique de mot de passe et verrouillage de compte
+  (staff et client, par IP et par identifiant).
+- Nettoyage du champ TVA mort dans les formulaires devis/factures.
+
 ## v12.1 Hardening
 
 - Remplacement de `datetime.utcnow()` par `datetime.now(timezone.utc)`.

@@ -22,6 +22,15 @@ Thumbs.db
 
 # Archives
 *.zip
+*.7z
+
+# Outils tiers téléchargés (SMART, etc.)
+tools/*.exe
+tools/*.msi
+tools/*.iso
+
+# Volumes Docker Synology (données Postgres/MinIO)
+volumes/
 
 # Artefacts d'intervention générés par l'agent (tests locaux, imports manuels)
 /Intervention_*/
