@@ -22,7 +22,11 @@ Ce module gère uniquement :
 """
 from __future__ import annotations
 
+import html
 import logging
+import os
+import time
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from io import BytesIO
@@ -41,6 +45,14 @@ from ..helpers import apply_intervention_filters, generate_ai_summary, paginate_
 from ..models import Client, Intervention, Machine, Part, Quote, Invoice
 
 logger = logging.getLogger(__name__)
+
+# Rate limit sur /upload (clé API statique) : freine le brute-force de la clé
+# d'import ZIP, sur le même principe que le rate limit /login (par IP).
+UPLOAD_AUTH_FAILURES: dict[str, deque[float]] = defaultdict(deque)
+UPLOAD_RATE_LIMIT_COUNT = int(os.getenv("UPLOAD_RATE_LIMIT_COUNT", "10"))
+UPLOAD_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("UPLOAD_RATE_LIMIT_WINDOW_SECONDS", "300"))
+
+ZIP_MAGIC_BYTES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
 
 router = APIRouter()
 _templates: Jinja2Templates | None = None
@@ -160,8 +172,22 @@ async def upload_intervention(
     session: Session = Depends(get_session),
 ):
     from ..auth import verify_upload_access
+
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    failures = UPLOAD_AUTH_FAILURES[client_ip]
+    while failures and now - failures[0] > UPLOAD_RATE_LIMIT_WINDOW_SECONDS:
+        failures.popleft()
+    if len(failures) >= UPLOAD_RATE_LIMIT_COUNT:
+        logger.warning("Rate limit /upload dépassé pour IP %s", client_ip)
+        raise HTTPException(status_code=429, detail="Trop de tentatives d'import. Réessayez plus tard.")
+
     if not verify_upload_access(request, session, upload_key or None):
+        failures.append(now)
+        logger.warning("Échec d'authentification /upload depuis %s", client_ip)
         raise HTTPException(status_code=401, detail="Authentification requise pour l'import ZIP")
+    UPLOAD_AUTH_FAILURES.pop(client_ip, None)
+
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Archive ZIP requise")
 
@@ -172,6 +198,8 @@ async def upload_intervention(
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Fichier trop volumineux")
+    if not any(content.startswith(sig) for sig in ZIP_MAGIC_BYTES):
+        raise HTTPException(status_code=400, detail="Contenu du fichier invalide : signature ZIP attendue")
     # Création défensive du dossier de destination : ne pas dépendre uniquement
     # de l'événement startup (peut ne pas s'être exécuté selon le contexte
     # d'exécution — tests, volume Docker monté vide, etc.).
@@ -316,20 +344,28 @@ def intervention_label(intervention_id: int, request: Request, session: Session 
         raise HTTPException(status_code=404, detail="Intervention introuvable")
     client = intervention.client
     machine = intervention.machine
-    html = f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Étiquette</title>
+    # Toutes les valeurs pouvant provenir d'une saisie utilisateur (nom client,
+    # nom machine, numéro de série BIOS) sont échappées avant insertion dans le
+    # HTML — sans quoi un nom de client contenant du HTML/JS serait exécuté dans
+    # le navigateur du technicien qui imprime l'étiquette (XSS stockée).
+    client_name = html.escape(client.name) if client else "—"
+    machine_name = html.escape(intervention.machine_name or (machine.machine_name if machine else "—"))
+    bios_serial = html.escape(intervention.bios_serial or "—")
+    status_value = html.escape(intervention.status or "")
+    label_html = f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Étiquette</title>
 <style>body{{font-family:Segoe UI,Arial,sans-serif;margin:20px}}
 .label{{width:95mm;border:2px solid #111;border-radius:8px;padding:12px}}
 h1{{font-size:16px;margin:0 0 8px;color:#0a84ff}} .id{{font-size:22px;font-weight:800}}
 p{{margin:4px 0;font-size:13px}} @media print{{button{{display:none}}}}</style>
 </head><body><button onclick="print()">Imprimer</button><div class="label">
 <h1>Restor-PC RescueGrid</h1><div class="id">INT-{intervention.id:06d}</div>
-<p><strong>Client :</strong> {client.name if client else '—'}</p>
-<p><strong>Machine :</strong> {intervention.machine_name or (machine.machine_name if machine else '—')}</p>
-<p><strong>BIOS :</strong> {intervention.bios_serial or '—'}</p>
-<p><strong>Statut :</strong> {intervention.status}</p>
+<p><strong>Client :</strong> {client_name}</p>
+<p><strong>Machine :</strong> {machine_name}</p>
+<p><strong>BIOS :</strong> {bios_serial}</p>
+<p><strong>Statut :</strong> {status_value}</p>
 <p><strong>Date :</strong> {intervention.created_at.strftime('%d/%m/%Y %H:%M')}</p>
 </div></body></html>"""
-    return HTMLResponse(html)
+    return HTMLResponse(label_html)
 
 
 # ── Téléchargements ───────────────────────────────────────────────────────────

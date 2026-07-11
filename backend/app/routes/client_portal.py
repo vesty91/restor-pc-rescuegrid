@@ -31,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import oauth
-from ..auth import get_admin_or_redirect, hash_password, log_activity, validate_password_strength
+from ..auth import COOKIE_SECURE, get_admin_or_redirect, hash_password, log_activity, validate_password_strength, verify_password
 from ..client_auth import (
     CLIENT_COOKIE_NAME,
     authenticate_client_account,
@@ -110,7 +110,7 @@ def client_login_post(
     clear_client_login_attempts(client_ip, email_key)
     token = create_client_token(account.id)
     response = RedirectResponse("/client/portal", status_code=303)
-    response.set_cookie(CLIENT_COOKIE_NAME, token, httponly=True, samesite="lax")
+    response.set_cookie(CLIENT_COOKIE_NAME, token, httponly=True, samesite="lax", secure=COOKIE_SECURE)
     return response
 
 
@@ -130,7 +130,7 @@ def client_oauth_start(provider: str, request: Request):
     state = oauth.generate_state()
     url = oauth.get_authorize_url(provider, state)
     response = RedirectResponse(url, status_code=303)
-    response.set_cookie(OAUTH_STATE_COOKIE, state, httponly=True, samesite="lax", max_age=600)
+    response.set_cookie(OAUTH_STATE_COOKIE, state, httponly=True, samesite="lax", max_age=600, secure=COOKIE_SECURE)
     return response
 
 
@@ -175,7 +175,7 @@ def client_oauth_callback(
 
     token = create_client_token(account.id)
     response = RedirectResponse("/client/portal", status_code=303)
-    response.set_cookie(CLIENT_COOKIE_NAME, token, httponly=True, samesite="lax")
+    response.set_cookie(CLIENT_COOKIE_NAME, token, httponly=True, samesite="lax", secure=COOKIE_SECURE)
     response.delete_cookie(OAUTH_STATE_COOKIE)
     return response
 
@@ -211,6 +211,29 @@ def client_portal_home(request: Request, session: Session = Depends(get_session)
         "invoices": invoices,
         "upcoming_appointments": upcoming_appointments,
     })
+
+
+@router.post("/client/portal/change-password")
+def client_change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    account, redirect = get_client_or_redirect(request, session)
+    if redirect:
+        return redirect
+    if not account.hashed_password or not verify_password(current_password, account.hashed_password):
+        return RedirectResponse("/client/portal?pwd=current_invalid", status_code=303)
+    if new_password != confirm_password:
+        return RedirectResponse("/client/portal?pwd=mismatch", status_code=303)
+    error = validate_password_strength(new_password, account.email)
+    if error:
+        return RedirectResponse(f"/client/portal?pwd=weak", status_code=303)
+    account.hashed_password = hash_password(new_password)
+    session.commit()
+    return RedirectResponse("/client/portal?pwd=ok", status_code=303)
 
 
 @router.get("/client/quote/{quote_id}/pdf")

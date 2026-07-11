@@ -26,6 +26,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -86,6 +87,16 @@ def sanitize_filename(value: str) -> str:
     return cleaned[:180] or "upload"
 
 
+def _is_symlink_member(member) -> bool:
+    """Détecte une entrée ZIP encodant un lien symbolique Unix (bit S_IFLNK dans
+    external_attr, cf. format de zipfile sous Linux/macOS). Un tel lien peut
+    pointer n'importe où sur le disque une fois extrait, même si son propre nom
+    de chemin dans l'archive est valide — la validation de chemin ci-dessous ne
+    suffit donc pas à elle seule à s'en protéger (variante de Zip Slip)."""
+    mode = member.external_attr >> 16
+    return bool(mode) and stat.S_ISLNK(mode)
+
+
 def safe_extract_zip(archive_path: Path, destination: Path) -> None:
     destination = destination.resolve()
     total_size = 0
@@ -94,6 +105,8 @@ def safe_extract_zip(archive_path: Path, destination: Path) -> None:
         if len(members) > MAX_ZIP_FILES:
             raise HTTPException(status_code=413, detail=f"Archive trop volumineuse : {len(members)} fichiers")
         for member in members:
+            if _is_symlink_member(member):
+                raise HTTPException(status_code=400, detail="Archive ZIP invalide : lien symbolique refusé")
             total_size += max(member.file_size, 0)
             if total_size > MAX_ZIP_UNCOMPRESSED_BYTES:
                 raise HTTPException(status_code=413, detail="Archive ZIP trop volumineuse après extraction")
@@ -441,6 +454,28 @@ CSRF_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_EXEMPT_PATHS = {"/upload"}
 
 
+# ── En-têtes de sécurité HTTP ───────────────────────────────────────────────
+# Durcissement de base (defense in depth) : empêche l'affichage du dashboard
+# dans une <iframe> tierce (clickjacking), le sniffing de type MIME, et limite
+# les fuites de referrer. HSTS n'est ajouté que si COOKIE_SECURE=true (HTTPS
+# actif), sans quoi HSTS casserait un accès local en http://localhost.
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+    )
+    from .auth import COOKIE_SECURE
+    if COOKIE_SECURE:
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return response
+
+
 @app.middleware("http")
 async def csrf_origin_guard(request: Request, call_next):
     if request.method in CSRF_UNSAFE_METHODS and request.url.path not in CSRF_EXEMPT_PATHS:
@@ -497,6 +532,12 @@ async def on_startup() -> None:
     STORAGE_DIR.mkdir(exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    if os.getenv("ALLOW_ANONYMOUS_UPLOAD", "").strip().lower() in {"1", "true", "yes", "on"}:
+        logger.warning(
+            "ALLOW_ANONYMOUS_UPLOAD=true : /upload accepte des imports ZIP sans authentification "
+            "ni clé API. À réserver à un usage local/dev sur réseau de confiance — "
+            "ne jamais activer sur une instance exposée publiquement."
+        )
     init_db()
     with SessionLocal() as session:
         from .auth import create_default_admin
@@ -559,7 +600,8 @@ async def login_post(
     logger.info("Connexion réussie : %s depuis %s", username, client_ip)
     token = create_access_token({"sub": user.username})
     response = RedirectResponse("/", status_code=303)
-    response.set_cookie("access_token", token, httponly=True, samesite="lax")
+    from .auth import COOKIE_SECURE
+    response.set_cookie("access_token", token, httponly=True, samesite="lax", secure=COOKIE_SECURE)
     return response
 
 
@@ -622,18 +664,26 @@ def healthcheck():
     return {"status": "ok", "version": "12.2"}
 
 
+MAX_LOGO_BYTES = int(os.getenv("MAX_LOGO_BYTES", str(5 * 1024 * 1024)))
+
+
 @app.post("/upload-logo")
 async def upload_logo(request: Request, file: UploadFile = File(...), session: Session = Depends(get_session)):
-    user, redirect = get_user_or_redirect(request, session)
+    # Réservé à l'admin : ce logo apparaît sur tous les devis/factures envoyés
+    # aux clients, un technicien standard ne doit pas pouvoir le remplacer.
+    from .auth import get_admin_or_redirect
+    user, redirect = get_admin_or_redirect(request, session)
     if redirect:
         return redirect
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Fichier image requis")
+    content = await file.read(MAX_LOGO_BYTES + 1)
+    if len(content) > MAX_LOGO_BYTES:
+        raise HTTPException(status_code=413, detail="Image trop volumineuse")
     logo_dir = STORAGE_DIR / "logos"
     logo_dir.mkdir(exist_ok=True)
     logo_path = logo_dir / "logo.png"
-    with logo_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    logo_path.write_bytes(content)
     config_path = BASE_DIR / "logo_config.json"
     config_path.write_text(json.dumps({"logo_path": "logos/logo.png"}), encoding="utf-8")
     return RedirectResponse("/", status_code=303)
@@ -641,11 +691,14 @@ async def upload_logo(request: Request, file: UploadFile = File(...), session: S
 
 @app.get("/backup/database")
 def backup_database(request: Request):
-    from .auth import get_current_user
+    # Réservé à l'admin : ce fichier contient l'intégralité de la base (clients,
+    # mots de passe hashés, factures) — un compte technicien ne doit pas pouvoir
+    # l'exfiltrer en un clic (voir /backup/history, réservé admin, pour comparaison).
+    from .auth import get_admin_or_redirect
     with SessionLocal() as session:
-        user = get_current_user(request, session)
-        if not user:
-            raise HTTPException(status_code=401, detail="Non autorisé")
+        user, redirect = get_admin_or_redirect(request, session)
+        if redirect:
+            raise HTTPException(status_code=401, detail="Accès administrateur requis")
     for db_name in ["rescuegrid.db", "app.db"]:
         db_path = BASE_DIR / db_name
         if db_path.exists():

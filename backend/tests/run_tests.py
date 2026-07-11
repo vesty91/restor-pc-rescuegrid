@@ -544,6 +544,168 @@ def test_client_portal_requires_auth() -> None:
     record("GET /client/portal sans auth -> redirect", r.status_code == 303 and r.headers.get("location") == "/client/login")
 
 
+# ── Tests revue de sécurité (auto-générés lors de la remédiation) ───────────
+
+def _create_technician_and_login() -> "TestClient":
+    """Crée un compte technicien (role != admin) et retourne un client authentifié
+    en tant que ce compte — utilisé pour vérifier qu'un non-admin ne peut pas
+    accéder aux routes réservées à l'administrateur (contrairement à un test
+    "sans auth", qui ne distingue pas rôle insuffisant de absence de session)."""
+    from app.auth import hash_password
+    from app.database import SessionLocal
+    from app.models import User
+    from sqlalchemy import select
+
+    with SessionLocal() as session:
+        existing = session.scalars(select(User).where(User.username == "tech1")).first()
+        if not existing:
+            session.add(User(
+                username="tech1", hashed_password=hash_password("techpassword2026"),
+                full_name="Technicien Test", role="technicien", email="tech1@rescuegrid.local",
+            ))
+            session.commit()
+    tech_client = TestClient(app)
+    tech_client.post("/login", data={"username": "tech1", "password": "techpassword2026"})
+    return tech_client
+
+
+def test_backup_database_requires_admin() -> None:
+    c = TestClient(app)
+    r = c.get("/backup/database", follow_redirects=False)
+    record("GET /backup/database sans auth -> 401", r.status_code == 401, f"status={r.status_code}")
+
+    tech = _create_technician_and_login()
+    r = tech.get("/backup/database", follow_redirects=False)
+    record("GET /backup/database technicien -> 401 (admin requis)", r.status_code == 401, f"status={r.status_code}")
+
+    r = client.get("/backup/database", follow_redirects=False)
+    record(
+        "GET /backup/database admin -> autorisé (200 ou 404 si SQLite absent)",
+        r.status_code in (200, 404),
+        f"status={r.status_code}",
+    )
+
+
+def test_upload_logo_requires_admin() -> None:
+    tech = _create_technician_and_login()
+    fake_png = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
+    r = tech.post("/upload-logo", files={"file": ("logo.png", fake_png, "image/png")}, follow_redirects=False)
+    record("POST /upload-logo technicien -> refusé (redirect /)", r.status_code == 303 and r.headers.get("location") == "/", f"status={r.status_code}")
+
+
+def test_intervention_label_escapes_xss() -> None:
+    """Un nom de client contenant du HTML/JS ne doit jamais être injecté tel
+    quel dans l'étiquette imprimable (XSS stockée corrigée lors de la revue
+    de sécurité) : le nom doit apparaître échappé (&lt;script&gt;)."""
+    from app.database import SessionLocal
+    from app.models import Client, Intervention
+    from sqlalchemy import select
+
+    xss_name = "<script>alert(1)</script>"
+    with SessionLocal() as session:
+        c = Client(name=xss_name)
+        session.add(c)
+        session.commit()
+        intervention = Intervention(client_id=c.id, title="Intervention XSS test", machine_name="PC-XSS")
+        session.add(intervention)
+        session.commit()
+        iid = intervention.id
+
+    r = client.get(f"/intervention/{iid}/label")
+    ok = r.status_code == 200 and "<script>alert(1)</script>" not in r.text and "&lt;script&gt;" in r.text
+    record("GET /intervention/{id}/label échappe le nom client (anti-XSS)", ok, f"status={r.status_code}")
+
+
+def test_safe_extract_zip_rejects_symlink() -> None:
+    """Une entrée ZIP encodant un lien symbolique Unix doit être rejetée même
+    si son propre chemin dans l'archive est valide (variante Zip Slip via
+    symlink, corrigée lors de la revue de sécurité)."""
+    import stat
+    import zipfile as _zipfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp)
+        zip_path = dest / "symlink.zip"
+        with _zipfile.ZipFile(zip_path, "w") as zf:
+            info = _zipfile.ZipInfo("innocuous_link")
+            info.external_attr = (stat.S_IFLNK | 0o777) << 16
+            zf.writestr(info, "/etc/passwd")
+        try:
+            safe_extract_zip(zip_path, dest / "out")
+            record("safe_extract_zip rejette les liens symboliques", False, "devrait lever une exception")
+        except HTTPException as exc:
+            record("safe_extract_zip rejette les liens symboliques", exc.status_code == 400, f"status={exc.status_code}")
+
+
+def test_upload_rate_limit() -> None:
+    """Un enchaînement de tentatives /upload avec une mauvaise clé API doit
+    finir par être bloqué (429), pour freiner le brute-force de UPLOAD_API_KEY."""
+    from app.routes import interventions as interventions_module
+
+    os.environ["UPLOAD_API_KEY"] = "correct-key-for-rate-limit-test"
+    interventions_module.UPLOAD_AUTH_FAILURES.clear()
+    try:
+        c = TestClient(app)
+        last_status = None
+        for _ in range(interventions_module.UPLOAD_RATE_LIMIT_COUNT + 2):
+            buf = make_sample_zip()
+            r = c.post(
+                "/upload",
+                data={"client_name": "RateLimitTest", "upload_key": "wrong-key"},
+                files={"file": ("rl.zip", buf, "application/zip")},
+                follow_redirects=False,
+            )
+            last_status = r.status_code
+        record("POST /upload rate limit après échecs répétés -> 429", last_status == 429, f"status={last_status}")
+    finally:
+        os.environ.pop("UPLOAD_API_KEY", None)
+        interventions_module.UPLOAD_AUTH_FAILURES.clear()
+
+
+def test_upload_rejects_non_zip_content() -> None:
+    """Un fichier renommé .zip mais dont le contenu n'est pas une archive ZIP
+    (signature magique absente) doit être rejeté (400) plutôt qu'extrait."""
+    fake = io.BytesIO(b"ceci n'est pas un zip")
+    r = client.post(
+        "/upload",
+        data={"client_name": "FauxZip"},
+        files={"file": ("faux.zip", fake, "application/zip")},
+        follow_redirects=False,
+    )
+    record("POST /upload contenu non-ZIP -> 400", r.status_code == 400, f"status={r.status_code}")
+
+
+def test_security_headers_present() -> None:
+    r = client.get("/health")
+    ok = (
+        r.headers.get("X-Frame-Options") == "DENY"
+        and r.headers.get("X-Content-Type-Options") == "nosniff"
+        and "Content-Security-Policy" in r.headers
+    )
+    record("En-têtes de sécurité HTTP présents", ok, str(dict(r.headers)))
+
+
+def test_cookie_not_secure_by_default() -> None:
+    """COOKIE_SECURE=false par défaut (dev local http://) : le cookie de
+    session ne doit pas porter l'attribut Secure, sans quoi aucun navigateur
+    ne le renverrait en http://localhost."""
+    c = TestClient(app)
+    r = c.post("/login", data={"username": "admin", "password": "testadmin2026"}, follow_redirects=False)
+    set_cookie = r.headers.get("set-cookie", "")
+    record(
+        "Cookie access_token sans Secure quand COOKIE_SECURE=false",
+        "access_token" in set_cookie and "secure" not in set_cookie.lower(),
+        set_cookie,
+    )
+
+
+def test_invoice_invalid_intervention_id() -> None:
+    """POST /invoices avec un intervention_id inexistant doit renvoyer une
+    erreur claire (400) plutôt qu'un 500 (IntegrityError sous PostgreSQL)."""
+    r = client.post("/invoices", data={"intervention_id": "999999", "amount": "50"}, follow_redirects=False)
+    record("POST /invoices intervention_id invalide -> 400", r.status_code == 400, f"status={r.status_code}")
+
+
 def main() -> int:
     print("=== Tests Restor-PC RescueGrid ===\n")
     test_health()
@@ -585,6 +747,17 @@ def main() -> int:
     test_client_portal_flow()
     test_delete_requires_admin()
     test_invalid_login()
+
+    # Revue de sécurité
+    test_backup_database_requires_admin()
+    test_upload_logo_requires_admin()
+    test_intervention_label_escapes_xss()
+    test_safe_extract_zip_rejects_symlink()
+    test_upload_rate_limit()
+    test_upload_rejects_non_zip_content()
+    test_security_headers_present()
+    test_cookie_not_secure_by_default()
+    test_invoice_invalid_intervention_id()
 
     passed = sum(1 for _, ok, _ in results if ok)
     failed = sum(1 for _, ok, _ in results if not ok)

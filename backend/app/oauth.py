@@ -135,15 +135,28 @@ def _profile_github(access_token: str) -> OAuthProfile | None:
         return None
     user_data = user_resp.json()
     provider_user_id = str(user_data.get("id"))
-    email = user_data.get("email")
+
+    # Sécurité : on ne fait jamais confiance directement au champ "email" de
+    # /user (public profile), même s'il est présent — on ne retient que les
+    # adresses explicitement marquées "verified" par /user/emails. GitHub exige
+    # déjà qu'une adresse soit vérifiée pour être associée à un compte, mais on
+    # revérifie ici en défense en profondeur plutôt que de se fier à un champ
+    # qui ne porte pas lui-même l'information de vérification.
+    verified_emails: list[dict] = []
+    emails_resp = httpx.get("https://api.github.com/user/emails", headers=headers, timeout=15)
+    if emails_resp.status_code == 200:
+        verified_emails = [e for e in emails_resp.json() if e.get("verified")]
+
+    email = None
+    for entry in verified_emails:
+        if entry.get("primary"):
+            email = entry.get("email")
+            break
+    if not email and verified_emails:
+        email = verified_emails[0].get("email")
+
     if not email:
-        emails_resp = httpx.get("https://api.github.com/user/emails", headers=headers, timeout=15)
-        if emails_resp.status_code == 200:
-            for entry in emails_resp.json():
-                if entry.get("primary") and entry.get("verified"):
-                    email = entry.get("email")
-                    break
-    if not email:
+        logger.warning("Connexion GitHub refusée : aucune adresse email vérifiée pour l'utilisateur #%s", provider_user_id)
         return None
     return OAuthProfile(email=email.strip().lower(), provider_user_id=provider_user_id)
 

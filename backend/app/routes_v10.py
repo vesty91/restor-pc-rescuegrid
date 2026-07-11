@@ -6,7 +6,6 @@ import csv
 import logging
 import io
 import re
-import shutil
 import os
 import smtplib
 from email.message import EmailMessage
@@ -38,6 +37,9 @@ from .models import ActivityLog, Client, Intervention, InterventionPart, Interve
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+MAX_PHOTO_BYTES = int(os.getenv("MAX_PHOTO_BYTES", str(8 * 1024 * 1024)))
+MAX_SIGNATURE_BYTES = int(os.getenv("MAX_SIGNATURE_BYTES", str(2 * 1024 * 1024)))
 
 
 def _smtp_config() -> dict:
@@ -531,12 +533,14 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
             phase = "during"
         if not file.content_type or not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="Image requise")
+        content = await file.read(MAX_PHOTO_BYTES + 1)
+        if len(content) > MAX_PHOTO_BYTES:
+            raise HTTPException(status_code=413, detail="Image trop volumineuse")
         safe = sanitize_filename(file.filename or "photo.jpg")
         rel = f"photos/int_{intervention_id}_{phase}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{safe}"
         target = storage_dir / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        target.write_bytes(content)
         photo = InterventionPhoto(intervention_id=intervention_id, phase=phase, file_path=rel)
         session.add(photo)
         log_activity(session, user, "intervention.photo", f"#{intervention_id} {phase}")
@@ -560,7 +564,12 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
         if not match:
             raise HTTPException(status_code=400, detail="Signature invalide")
         ext = "png" if match.group(1).lower() == "png" else "jpg"
-        raw = base64.b64decode(match.group(2))
+        try:
+            raw = base64.b64decode(match.group(2), validate=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Signature invalide (encodage base64 incorrect)")
+        if len(raw) > MAX_SIGNATURE_BYTES:
+            raise HTTPException(status_code=413, detail="Signature trop volumineuse")
         rel = f"signatures/int_{intervention_id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.{ext}"
         target = storage_dir / rel
         target.parent.mkdir(parents=True, exist_ok=True)

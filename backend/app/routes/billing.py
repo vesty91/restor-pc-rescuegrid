@@ -80,6 +80,12 @@ def create_invoice(
     if redirect:
         return redirect
     intervention = session.get(Intervention, intervention_id)
+    if not intervention:
+        # Évite une IntegrityError 500 (contrainte de clé étrangère, notamment
+        # sous PostgreSQL) si intervention_id ne correspond à aucune ligne —
+        # cas possible avec un formulaire manipulé ou une intervention supprimée
+        # entre le chargement du formulaire et la soumission.
+        raise HTTPException(status_code=400, detail="Intervention introuvable pour cette facture")
     number = _next_document_number(session, "INV", Invoice, "invoice_number")
     due = None
     if due_date:

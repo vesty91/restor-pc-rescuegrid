@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import base64
+import html
 import io
 import logging
 import subprocess
@@ -829,7 +830,7 @@ def invoice_html(invoice: Invoice) -> str:
     desc = _clean_description(invoice.notes, intervention)
     due = invoice.due_date.strftime("%d/%m/%Y") if invoice.due_date else ""
     paid = f"<p><strong>Payé le :</strong> {invoice.paid_at.strftime('%d/%m/%Y')}</p>" if invoice.paid_at else ""
-    method = f"<p><strong>Mode de paiement :</strong> {invoice.payment_method}</p>" if invoice.payment_method else ""
+    method = f"<p><strong>Mode de paiement :</strong> {html.escape(invoice.payment_method)}</p>" if invoice.payment_method else ""
     detail_title, detail_subtitle, detail_bullets = _service_presentation(desc)
     return document_html(
         "invoice",
@@ -887,7 +888,11 @@ def render_document_pdf(html_content: str, filename: str) -> tuple[bytes, str, s
                 subprocess.run(
                     [
                         wkhtml,
-                        "--enable-local-file-access",
+                        # --enable-local-file-access volontairement omis : toutes les images
+                        # (logo, signatures) sont déjà embarquées en data URI base64 (voir
+                        # _logo_data_uri/_client_signature_data_uri) donc aucun accès fichier
+                        # local n'est nécessaire, et l'activer exposerait à une lecture de
+                        # fichiers du conteneur si le contenu HTML venait à être manipulé.
                         "--quiet",
                         "--print-media-type",
                         "--page-size", "A4",

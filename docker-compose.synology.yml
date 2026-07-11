@@ -3,6 +3,13 @@ version: "3.8"
 # ===== Restor-PC RescueGrid — Stack Synology / NAS =====
 # Déploiement production avec PostgreSQL, MinIO (S3), Nginx reverse proxy
 # Usage : docker-compose -f docker-compose.synology.yml up -d
+#
+# Sécurité : aucun mot de passe par défaut n'est fourni ci-dessous (syntaxe
+# ${VAR:?message} = docker-compose refuse de démarrer si la variable n'est pas
+# définie dans .env). Créer un fichier .env à côté de ce fichier avec des
+# valeurs uniques et fortes pour POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD,
+# SECRET_KEY, ADMIN_PASSWORD, PGADMIN_PASSWORD avant le premier démarrage —
+# voir .env.example.
 
 services:
   # === Base de données PostgreSQL ===
@@ -12,7 +19,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rescuegrid}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rescuegrid2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD dans .env (mot de passe fort et unique)}
       POSTGRES_DB: ${POSTGRES_DB:-rescuegrid}
     volumes:
       - ./volumes/postgres:/var/lib/postgresql/data
@@ -25,19 +32,23 @@ services:
       retries: 5
 
   # === MinIO (stockage S3 compatible) ===
+  # Ports liés à 127.0.0.1 uniquement : MinIO est un outil d'administration du
+  # stockage, pas un service à exposer publiquement. Accès distant via tunnel
+  # SSH/VPN, ou retirer le bind 127.0.0.1 seulement si un pare-feu NAS filtre déjà
+  # ces ports depuis l'extérieur.
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: rescuegrid_minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-rescuegrid2026}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Definir MINIO_ROOT_PASSWORD dans .env (mot de passe fort et unique)}
     volumes:
       - ./volumes/minio:/data
     ports:
-      - "9000:9000"   # API S3
-      - "9001:9001"   # Console web
+      - "127.0.0.1:9000:9000"   # API S3
+      - "127.0.0.1:9001:9001"   # Console web
     networks:
       - rescuegrid
     healthcheck:
@@ -71,9 +82,13 @@ services:
     container_name: rescuegrid_backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-rescuegrid}:${POSTGRES_PASSWORD:-rescuegrid2026}@postgres:5432/${POSTGRES_DB:-rescuegrid}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-2026}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-rescuegrid2026}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rescuegrid}:${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD dans .env}@postgres:5432/${POSTGRES_DB:-rescuegrid}
+      SECRET_KEY: ${SECRET_KEY:?Definir SECRET_KEY dans .env (chaine aleatoire longue, ex: openssl rand -hex 32)}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Definir ADMIN_PASSWORD dans .env (mot de passe fort et unique)}
+      # false par defaut pour ne pas casser la connexion tant que HTTPS n'est pas
+      # configure sur nginx (etape 5 de docs/SYNOLOGY_DEPLOY.md) — passer a true
+      # dans .env une fois un certificat TLS actif.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       STORAGE_PATH: /app/storage
     volumes:
       - ./volumes/storage:/app/storage
@@ -90,15 +105,17 @@ services:
       retries: 3
 
   # === Optionnel : pgAdmin (administration PostgreSQL) ===
+  # Port lié à 127.0.0.1 uniquement (voir remarque MinIO ci-dessus) : outil
+  # d'administration, pas un service public.
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:9.16
     container_name: rescuegrid_pgadmin
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@rescuegrid.local}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-rescuegrid2026}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?Definir PGADMIN_PASSWORD dans .env (mot de passe fort et unique)}
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"
     volumes:
       - ./volumes/pgadmin:/var/lib/pgadmin
     depends_on:

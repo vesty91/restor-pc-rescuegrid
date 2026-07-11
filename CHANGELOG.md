@@ -1,5 +1,35 @@
 # Changelog
 
+## v12.3.2 — Revue de sécurité complète
+
+Correctifs suite à un audit manuel de l'ensemble du projet (auth, autorisation,
+injection, secrets, rate limiting, dépendances, scripts PowerShell, Docker,
+en-têtes HTTP) :
+
+- **Critique** : plus de `SECRET_KEY`/`ADMIN_PASSWORD` par défaut connus —
+  clé JWT auto-générée et persistée (`backend/.secret_key`) si absente de
+  l'environnement, mot de passe admin initial aléatoire affiché une seule fois
+  au premier démarrage si `ADMIN_PASSWORD` n'est pas défini. `docker-compose.synology.yml`
+  refuse désormais de démarrer sans `POSTGRES_PASSWORD`/`MINIO_ROOT_PASSWORD`/
+  `SECRET_KEY`/`ADMIN_PASSWORD`/`PGADMIN_PASSWORD` explicites (plus de mot de
+  passe par défaut `rescuegrid2026`). `GET /backup/database` réservé à
+  l'administrateur (était accessible à tout compte staff).
+- **Élevé** : cookies de session `Secure` configurables (`COOKIE_SECURE`),
+  claim JWT `typ` pour cloisonner strictement sessions staff/client, ports
+  MinIO/pgAdmin liés à `127.0.0.1` uniquement, vérification email GitHub OAuth
+  durcie (adresses vérifiées uniquement via `/user/emails`), échappement HTML
+  de l'étiquette d'intervention et du mode de paiement facture (XSS stockée),
+  retrait de `--enable-local-file-access` (wkhtmltopdf), en-têtes de sécurité
+  HTTP (CSP, X-Frame-Options, X-Content-Type-Options, HSTS conditionnel),
+  conteneur backend exécuté en utilisateur non-root, images MinIO/pgAdmin
+  épinglées à une version précise (plus de `:latest`).
+- **Moyen** : rejet des liens symboliques dans les archives ZIP importées
+  (variante Zip Slip), rate limiting sur `/upload` (clé API), vérification de
+  la signature magique ZIP, limites de taille sur logo/photos/signature,
+  `POST /invoices` renvoie 400 (au lieu d'un 500) si `intervention_id` est
+  invalide, changement de mot de passe ajouté à l'espace client.
+- Suite de tests étendue (9 nouveaux tests de régression sécurité, 67/67 au total).
+
 ## v12.3.1 — Pipeline ADK WinPE automatisé
 
 - Nouveau script `Build-RescueGridWinPE.ps1` : construit automatiquement

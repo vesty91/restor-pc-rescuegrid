@@ -56,20 +56,36 @@ backend:
 Copy-Item .env.example .env
 ```
 
-**Remplacez impérativement** les valeurs par défaut avant toute exposition
-réseau (elles sont volontairement faibles dans `.env.example` pour le
-développement local) :
+**Ces variables sont obligatoires** : `docker-compose.synology.yml` refuse de
+démarrer si elles ne sont pas définies dans `.env` (aucune valeur par défaut
+n'est fournie, volontairement, pour éviter tout déploiement avec un mot de
+passe connu/documenté) :
 
-- `SECRET_KEY` — clé JWT staff
-- `ADMIN_PASSWORD` — mot de passe admin initial
+- `SECRET_KEY` — clé JWT staff. Générer avec `openssl rand -hex 32` (ou laisser
+  vide en développement local hors Docker : une clé est alors auto-générée et
+  persistée dans `backend/.secret_key`, voir `app/auth.py`).
+- `ADMIN_PASSWORD` — mot de passe admin initial (10 caractères min., lettres +
+  chiffres). Si omis en développement local (hors ce compose), un mot de passe
+  aléatoire est généré et affiché une seule fois dans les logs au démarrage.
 - `POSTGRES_PASSWORD`
 - `MINIO_ROOT_PASSWORD` (même si MinIO n'est pas utilisé applicativement,
-  la console reste exposée sur le réseau — port 9001)
-- `PGADMIN_PASSWORD`
+  la console reste exposée — désormais liée à `127.0.0.1:9001` uniquement,
+  accès via tunnel SSH/VPN)
+- `PGADMIN_PASSWORD` (console liée à `127.0.0.1:5050`, idem)
 
 Configurez aussi `DATABASE_URL` pour pointer vers le service `postgres` du
 compose (déjà fait par défaut dans `docker-compose.synology.yml` via les
-variables `POSTGRES_*`).
+variables `POSTGRES_*`). Une fois nginx configuré en HTTPS à l'étape 5,
+ajoutez `COOKIE_SECURE=true` dans `.env` (à `false` par défaut, pour ne pas
+casser la connexion tant que HTTPS n'est pas actif — un cookie `Secure` n'est
+jamais renvoyé par le navigateur en HTTP).
+
+Le conteneur backend s'exécute en utilisateur non-root (UID/GID 1000, voir
+`backend/Dockerfile`). Si les dossiers `./volumes/storage` et
+`./volumes/reports` appartiennent à un autre utilisateur sur le NAS, ajustez
+leurs permissions, par ex. : `chown -R 1000:1000 ./volumes/storage
+./volumes/reports` (ou `chmod -R o+rwX` si `chown` n'est pas disponible via
+l'interface DSM).
 
 ### 3. Démarrer la stack
 

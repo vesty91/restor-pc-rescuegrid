@@ -5,7 +5,9 @@ Roles : admin, technicien
 import logging
 import os
 import re
+import secrets
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 import bcrypt
@@ -20,9 +22,54 @@ from .models import ActivityLog, User
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEY = os.getenv("SECRET_KEY", "rescuegrid-secret-change-in-production-2026")
+
+def _load_or_create_secret_key() -> str:
+    """Retourne SECRET_KEY depuis l'environnement, ou génère/persiste une clé aléatoire.
+
+    Sécurité : aucune valeur par défaut fixe et connue n'est utilisée (une clé JWT
+    connue permettrait de forger des sessions admin). Si SECRET_KEY n'est pas
+    définie dans l'environnement, une clé aléatoire est générée une seule fois et
+    stockée dans backend/.secret_key (fichier ignoré par git) afin de rester stable
+    entre redémarrages sur une même instance.
+    """
+    env_key = os.getenv("SECRET_KEY", "").strip()
+    if env_key:
+        return env_key
+    key_file = Path(__file__).resolve().parents[1] / ".secret_key"
+    try:
+        if key_file.exists():
+            existing = key_file.read_text(encoding="utf-8").strip()
+            if existing:
+                return existing
+        generated = secrets.token_hex(32)
+        key_file.write_text(generated, encoding="utf-8")
+        try:
+            os.chmod(key_file, 0o600)
+        except OSError:
+            pass
+        logger.warning(
+            "SECRET_KEY absente de l'environnement : clé générée automatiquement et "
+            "persistée dans %s. Définir SECRET_KEY dans backend/.env pour un déploiement "
+            "reproductible ou multi-instance.", key_file,
+        )
+        return generated
+    except OSError as exc:
+        logger.warning(
+            "Impossible d'écrire le fichier de clé secrète (%s) : clé éphémère utilisée, "
+            "les sessions seront invalidées à chaque redémarrage.", exc,
+        )
+        return secrets.token_hex(32)
+
+
+SECRET_KEY = _load_or_create_secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "480"))
+
+# Cookies de session marqués Secure (envoyés uniquement en HTTPS) — à activer dès
+# que l'application est servie en HTTPS (Nginx/Synology avec certificat, ou tout
+# reverse proxy TLS). Reste désactivé par défaut pour ne pas casser un accès
+# local en http://localhost pendant le développement.
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 BCRYPT_ROUNDS = 12
 
@@ -63,6 +110,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
+    to_encode.setdefault("typ", "staff")
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -70,9 +118,14 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def decode_token(token: str) -> Optional[dict]:
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
         return None
+    # Empêche un cookie d'un autre espace (ex. client_token, typ="client") d'être
+    # rejoué comme session staff même si un token venait à être intercepté/copié.
+    if payload.get("typ") not in (None, "staff"):
+        return None
+    return payload
 
 
 def get_current_user(request: Request, session: Session = Depends(get_session)) -> Optional[User]:
@@ -158,7 +211,14 @@ def create_default_admin(session: Session) -> None:
     existing = session.scalars(select(User)).first()
     if existing:
         return
-    admin_password = os.getenv("ADMIN_PASSWORD", "rescuegrid2026")
+    admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+    generated = False
+    if not admin_password:
+        # Sécurité : pas de mot de passe par défaut connu/documenté. Une valeur
+        # aléatoire est générée à la première initialisation et affichée une seule
+        # fois dans les logs — noter/changer ce mot de passe immédiatement.
+        admin_password = secrets.token_urlsafe(12)
+        generated = True
     admin = User(
         username="admin",
         hashed_password=hash_password(admin_password),
@@ -168,4 +228,11 @@ def create_default_admin(session: Session) -> None:
     )
     session.add(admin)
     session.commit()
-    logger.info("Compte administrateur par defaut cree : admin")
+    if generated:
+        logger.warning(
+            "Aucun ADMIN_PASSWORD défini : mot de passe administrateur généré "
+            "automatiquement -> %s (à noter immédiatement et à changer dans "
+            "Paramètres après la première connexion).", admin_password,
+        )
+    else:
+        logger.info("Compte administrateur par defaut cree : admin")

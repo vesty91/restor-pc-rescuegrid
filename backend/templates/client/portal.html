@@ -119,6 +119,29 @@
       </table>
     </div>
     {% endif %}
+
+    <div class="card">
+      <h2>Sécurité — changer mon mot de passe</h2>
+      {% set pwd_status = request.query_params.get('pwd') %}
+      {% if pwd_status == 'ok' %}
+        <p style="color:var(--success)">Mot de passe mis à jour avec succès.</p>
+      {% elif pwd_status == 'current_invalid' %}
+        <p style="color:var(--warning)">Mot de passe actuel incorrect.</p>
+      {% elif pwd_status == 'mismatch' %}
+        <p style="color:var(--warning)">Les deux nouveaux mots de passe ne correspondent pas.</p>
+      {% elif pwd_status == 'weak' %}
+        <p style="color:var(--warning)">Mot de passe trop faible (10 caractères min., au moins une lettre et un chiffre).</p>
+      {% endif %}
+      <form method="post" action="/client/portal/change-password" style="display:grid;gap:10px;max-width:360px">
+        <input type="password" name="current_password" placeholder="Mot de passe actuel" required
+          style="padding:10px;border-radius:8px;border:1px solid var(--line);background:#081426;color:var(--text)">
+        <input type="password" name="new_password" placeholder="Nouveau mot de passe" required
+          style="padding:10px;border-radius:8px;border:1px solid var(--line);background:#081426;color:var(--text)">
+        <input type="password" name="confirm_password" placeholder="Confirmer le nouveau mot de passe" required
+          style="padding:10px;border-radius:8px;border:1px solid var(--line);background:#081426;color:var(--text)">
+        <button type="submit" style="padding:10px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-weight:700;cursor:pointer">Mettre à jour</button>
+      </form>
+    </div>
   </div>
 </body>
 </html>
