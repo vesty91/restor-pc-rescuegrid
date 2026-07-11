@@ -169,6 +169,10 @@ async def upload_intervention(
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Fichier trop volumineux")
+    # Création défensive du dossier de destination : ne pas dépendre uniquement
+    # de l'événement startup (peut ne pas s'être exécuté selon le contexte
+    # d'exécution — tests, volume Docker monté vide, etc.).
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     archive_path.write_bytes(content)
 
     import json

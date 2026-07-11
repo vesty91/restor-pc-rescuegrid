@@ -56,6 +56,8 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)
 MAX_ZIP_FILES = int(os.getenv("MAX_ZIP_FILES", "10000"))
 MAX_ZIP_UNCOMPRESSED_BYTES = int(os.getenv("MAX_ZIP_UNCOMPRESSED_BYTES", str(4 * 1024 * 1024 * 1024)))
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 LOGIN_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
 LOGIN_RATE_LIMIT_COUNT = int(os.getenv("LOGIN_RATE_LIMIT_COUNT", "5"))
