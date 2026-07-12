@@ -270,92 +270,92 @@ def document_html(
     min-height:297mm;
     margin:0 auto;
     background:white;
-    padding:16mm 16mm 14mm;
+    padding:12mm 14mm 9mm;
   }}
   table {{ border-collapse:collapse; }}
   .doc-header {{ width:100%; }}
   .doc-header td {{ vertical-align:top; }}
   .company-name {{
-    margin:0 0 1.5mm;
-    font-size:19px;
+    margin:0 0 1mm;
+    font-size:17px;
     font-weight:800;
     color:#0f172a;
   }}
   .company-subtitle {{
-    margin:0 0 3mm;
-    font-size:10px;
+    margin:0 0 2mm;
+    font-size:9.6px;
     color:#475569;
   }}
   .company-line {{
-    margin:0.8mm 0;
-    font-size:10px;
-    line-height:1.5;
+    margin:0.4mm 0;
+    font-size:9.6px;
+    line-height:1.35;
     color:#334155;
   }}
   .doc-meta {{ text-align:right; }}
   .doc-meta .doc-title {{
-    margin:0 0 3mm;
-    font-size:25px;
+    margin:0 0 2mm;
+    font-size:21px;
     font-weight:800;
     letter-spacing:.4px;
     text-transform:uppercase;
     color:#0f172a;
   }}
   .doc-meta p {{
-    margin:1mm 0;
-    font-size:10.2px;
+    margin:0.5mm 0;
+    font-size:9.8px;
     color:#334155;
   }}
   .badge {{
     display:inline-block;
-    margin-top:2.5mm;
-    padding:1.6mm 4.5mm;
+    margin-top:1.5mm;
+    padding:1.3mm 4mm;
     border-radius:999px;
     background:#d7f8e9;
     color:#047857;
-    font-size:10px;
+    font-size:9.6px;
     font-weight:800;
   }}
   .accent-line {{
-    height:2.6px;
+    height:2.4px;
     background:#13a7bd;
     border:0;
-    margin:5mm 0 6mm;
+    margin:3mm 0 3.5mm;
   }}
   .info-card {{
     width:100%;
     background:#eef3f8;
     border-radius:8px;
-    margin-bottom:6mm;
+    margin-bottom:3.5mm;
   }}
   .info-card td {{
     width:50%;
     vertical-align:top;
-    padding:5mm 6mm;
+    padding:3mm 5mm;
   }}
   .info-card td + td {{ border-left:1px solid #d7e0ea; }}
   .info-card h3, .technical h3, .payment-box h3 {{
-    margin:0 0 2.5mm;
-    font-size:11px;
+    margin:0 0 1.6mm;
+    font-size:10.4px;
     font-weight:800;
     text-transform:uppercase;
     color:#0f172a;
   }}
   .info-card p {{
     margin:0;
-    font-size:10.4px;
-    line-height:1.55;
+    font-size:9.8px;
+    line-height:1.4;
     color:#334155;
   }}
   .info-card strong {{ color:#0f172a; }}
-  .technical {{ margin-bottom:6mm; }}
+  .technical {{ margin-bottom:3.5mm; }}
   .technical ul {{ margin:0; padding:0; list-style:none; }}
   .technical li {{
     position:relative;
     padding-left:5mm;
-    margin:1.3mm 0;
-    font-size:10.4px;
-    line-height:1.4;
+    margin:0.7mm 0;
+    font-size:9.8px;
+    line-height:1.32;
     color:#334155;
   }}
   .technical li:before {{
@@ -365,30 +365,30 @@ def document_html(
     color:#13a7bd;
     font-weight:900;
   }}
-  table.items {{ width:100%; margin-bottom:6mm; }}
+  table.items {{ width:100%; margin-bottom:3.5mm; }}
   table.items th {{
     background:#1f2733;
     color:white;
-    font-size:9.6px;
+    font-size:9.2px;
     font-weight:700;
     text-transform:uppercase;
     letter-spacing:.2px;
-    padding:3mm;
+    padding:2mm 2.6mm;
     text-align:left;
   }}
   table.items td {{
-    padding:3mm;
+    padding:2mm 2.6mm;
     border-bottom:1px solid #e2e8f0;
     vertical-align:top;
-    font-size:10.4px;
+    font-size:9.8px;
   }}
   .right {{ text-align:right; white-space:nowrap; }}
-  .designation strong {{ display:block; margin-bottom:1.5mm; color:#0f172a; }}
-  .designation small {{ color:#64748b; line-height:1.45; }}
-  table.totals {{ width:80mm; margin:0 0 6mm auto; }}
+  .designation strong {{ display:block; margin-bottom:1mm; color:#0f172a; }}
+  .designation small {{ color:#64748b; line-height:1.35; }}
+  table.totals {{ width:78mm; margin:0 0 3.5mm auto; }}
   table.totals td {{
-    padding:2.6mm 3mm;
-    font-size:10.4px;
+    padding:1.5mm 3mm;
+    font-size:9.8px;
     border-bottom:1px solid #e2e8f0;
     color:#334155;
   }}
@@ -396,29 +396,29 @@ def document_html(
   table.totals tr.grand td {{
     background:#1f2733;
     color:white;
-    font-size:12.5px;
+    font-size:11.5px;
     font-weight:800;
     border-bottom:0;
   }}
   .payment-box {{
     background:#eef3f8;
     border-radius:8px;
-    padding:5mm 6mm;
-    margin-bottom:6mm;
+    padding:3mm 5mm;
+    margin-bottom:3.5mm;
   }}
-  .payment-box p {{ margin:0 0 1.5mm; font-size:10.4px; line-height:1.5; color:#334155; }}
+  .payment-box p {{ margin:0 0 1mm; font-size:9.8px; line-height:1.4; color:#334155; }}
   .payment-box p:last-child {{ margin-bottom:0; }}
-  table.signatures {{ width:100%; margin-bottom:6mm; }}
+  table.signatures {{ width:100%; margin-bottom:0; }}
   table.signatures td {{ width:50%; vertical-align:top; padding-right:8mm; }}
   .sig-title {{
-    font-size:10.2px;
+    font-size:9.6px;
     font-weight:800;
     text-transform:uppercase;
     color:#0f172a;
-    margin-bottom:2.5mm;
+    margin-bottom:1.6mm;
   }}
   .sig {{
-    height:16mm;
+    height:12mm;
     border:1px dashed #cbd5e1;
     border-radius:6px;
     display:table;
@@ -429,16 +429,16 @@ def document_html(
     vertical-align:middle;
     text-align:center;
     color:#94a3b8;
-    font-size:10.4px;
+    font-size:9.8px;
   }}
-  .sig img {{ max-width:52mm; max-height:12mm; object-fit:contain; }}
+  .sig img {{ max-width:52mm; max-height:10mm; object-fit:contain; }}
   .doc-footer {{
-    margin-top:4mm;
-    font-size:9.2px;
-    line-height:1.5;
+    margin-top:2.5mm;
+    font-size:8.4px;
+    line-height:1.4;
     color:#64748b;
     border-top:1px solid #e2e8f0;
-    padding-top:4mm;
+    padding-top:2.5mm;
   }}
   @page {{ size:A4; margin:0; }}
   @media print {{

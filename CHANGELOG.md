@@ -1,5 +1,17 @@
 # Changelog
 
+## v12.3.6 — PDF devis/factures tenant sur une seule page
+
+- Resserrement général des marges/espacements du gabarit PDF (`document_html`
+  dans `backend/app/helpers.py`) : marges de page, en-tête société, encadré
+  info client/intervention, liste technique, tableau d'articles, tableau des
+  totaux, encadré de règlement, bloc signatures et pied de page.
+- Réduction ciblée des tailles de police et hauteurs de ligne (sans perte de
+  lisibilité) et de la hauteur des cadres de signature (16 mm → 12 mm).
+- Corrige le débordement observé où le pied de page (mentions TVA/CGI) se
+  retrouvait seul sur une deuxième page alors que le reste du document tenait
+  sur la première.
+
 ## v12.3.5 — Nouveau design sobre des devis/factures
 
 - Remplacement du gabarit "premium" (panneau sombre, dégradés, formes
