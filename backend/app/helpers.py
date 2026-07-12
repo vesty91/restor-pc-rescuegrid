@@ -651,12 +651,21 @@ def document_html(
   @media print {{
     body {{ background:white; }}
     .toolbar {{ display:none; }}
-    .preview {{ padding:0; }}
+    .preview {{
+      padding:0;
+      display:block;
+      /* Le rendu direct-vers-PDF (wkhtmltopdf) n'interprète pas de façon
+         fiable "display:flex + justify-content:center" combiné à
+         "margin:auto" sur .page ci-dessous : le résultat était une page
+         recadrée horizontalement (colonne de gauche hors cadre). En
+         impression, .page occupe donc directement toute la largeur A4,
+         sans centrage flex. */
+    }}
     .page {{
-      width:190mm;
-      min-height:277mm;
-      height:277mm;
-      margin:10mm auto;
+      width:210mm;
+      min-height:297mm;
+      height:297mm;
+      margin:0;
       box-shadow:none;
       border-radius:0;
       overflow:hidden;
@@ -696,7 +705,7 @@ def document_html(
       <div class="company-line"><div class="ico">⌖</div><div>{br(company["address"])}</div></div>
       <div class="company-line"><div class="ico">☎</div><div>{safe(company["phone"])}</div></div>
       <div class="company-line"><div class="ico">✉</div><div>{safe(company["email"])}</div></div>
-      <div class="company-line"><div class="ico">🌐</div><div>{safe(company["site"])}</div></div>
+      <div class="company-line"><div class="ico">⊙</div><div>{safe(company["site"])}</div></div>
       <div class="company-line"><div class="ico">▣</div><div>{safe(company["siret"])}</div></div>
     </aside>
     <section class="doc-panel">
@@ -861,14 +870,68 @@ def render_document_pdf(html_content: str, filename: str) -> tuple[bytes, str, s
     pièces jointes email (voir routes_v10.py), afin d'éviter toute divergence.
 
     Stratégie, dans l'ordre :
-      1) wkhtmltopdf si présent sur le poste (meilleur rendu CSS/print).
-      2) xhtml2pdf (pur Python, toujours disponible via requirements.txt).
-      3) HTML imprimable en dernier recours si les deux échouent.
+      1) Chromium/Chrome headless si présent (moteur à jour : grille/flexbox/
+         dégradés CSS complets — le gabarit de document_html() en dépend).
+      2) wkhtmltopdf si présent sur le poste (moteur WebKit ancien, gelé depuis
+         2012 : ne supporte pas CSS grid/flexbox moderne, à éviter pour ce
+         gabarit mais conservé en repli pour compatibilité).
+      3) xhtml2pdf (pur Python, toujours disponible via requirements.txt, très
+         limité en CSS — dernier repli avant le HTML brut).
+      4) HTML imprimable en tout dernier recours si tout échoue.
 
     Retourne (contenu_binaire, maintype, subtype, nom_de_fichier_final).
     Le contenu est lu en mémoire avant tout nettoyage de fichiers temporaires.
     """
     pdf_name = filename if filename.lower().endswith(".pdf") else f"{Path(filename).stem}.pdf"
+
+    chromium = None
+    for cmd in (
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    ):
+        try:
+            subprocess.run([cmd, "--version"], capture_output=True, check=True, timeout=5)
+            chromium = cmd
+            break
+        except (FileNotFoundError, subprocess.SubprocessError, OSError):
+            continue
+
+    if chromium:
+        with tempfile.TemporaryDirectory() as tmp:
+            html_path = Path(tmp) / "document.html"
+            pdf_path = Path(tmp) / pdf_name
+            html_path.write_text(html_content, encoding="utf-8")
+            try:
+                subprocess.run(
+                    [
+                        chromium,
+                        "--headless=new",
+                        "--disable-gpu",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-extensions",
+                        "--no-first-run",
+                        "--disable-crash-reporter",
+                        f"--user-data-dir={tmp}/chrome-profile",
+                        "--no-pdf-header-footer",
+                        "--print-to-pdf-no-header",
+                        "--run-all-compositor-stages-before-draw",
+                        "--virtual-time-budget=8000",
+                        f"--print-to-pdf={pdf_path}",
+                        html_path.as_uri(),
+                    ],
+                    check=True,
+                    timeout=45,
+                    capture_output=True,
+                )
+                if pdf_path.is_file() and pdf_path.stat().st_size > 0:
+                    return pdf_path.read_bytes(), "application", "pdf", pdf_name
+            except Exception as exc:
+                logger.warning("Génération PDF via Chromium impossible : %s", exc)
 
     wkhtml = None
     for cmd in ("wkhtmltopdf", r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"):
@@ -895,6 +958,16 @@ def render_document_pdf(html_content: str, filename: str) -> tuple[bytes, str, s
                         # fichiers du conteneur si le contenu HTML venait à être manipulé.
                         "--quiet",
                         "--print-media-type",
+                        # Le "smart shrinking" (activé par défaut) redimensionne le rendu
+                        # pour le faire correspondre à la largeur de page cible en se basant
+                        # sur la largeur de viewport initiale (souvent différente des unités
+                        # mm utilisées dans le CSS de ce document, calé pixel pour pixel sur
+                        # l'A4) : cela provoquait un contenu décalé/rogné sur le côté gauche.
+                        # On fige donc une viewport identique à l'A4 (96dpi) et on désactive
+                        # ce redimensionnement automatique pour un rendu 1:1 fiable.
+                        "--disable-smart-shrinking",
+                        "--viewport-size", "794x1123",
+                        "--dpi", "96",
                         "--page-size", "A4",
                         "--margin-top", "0",
                         "--margin-right", "0",

@@ -1,5 +1,23 @@
 # Changelog
 
+## v12.3.4 — Moteur PDF Chromium (design pro devis/factures)
+
+- Le gabarit PDF (`document_html` dans `backend/app/helpers.py`) utilise CSS
+  grid, flexbox et dégradés. Or `wkhtmltopdf` embarque un moteur WebKit gelé
+  depuis 2012, **sans aucun support de CSS grid** : les colonnes (panneau de
+  marque, deux blocs adresse/intervention, lignes icône+texte) s'effondraient
+  en un rendu tronqué/illisible malgré le correctif v12.3.3.
+- **Chromium headless** est désormais le moteur PRINCIPAL de génération PDF
+  (`render_document_pdf`) : rendu fidèle à 100 % au design (dégradés, grid,
+  couleurs, icônes). `wkhtmltopdf` reste installé en repli, `xhtml2pdf` en
+  tout dernier recours.
+- `backend/Dockerfile` installe le paquet `chromium` ainsi que des polices
+  (`fonts-liberation`, `fonts-dejavu-core`, `fonts-noto-core`) pour un rendu
+  texte/symboles net (image ≈1.2 Go, build plus long — attendu vu le moteur
+  embarqué).
+- Remplacement de l'unique emoji couleur (🌐, sans rendu fiable sans police
+  d'emoji dédiée) par un symbole simple.
+
 ## v12.3.3 — Correctif génération PDF (devis/factures)
 
 - **Bug bloquant en production** : les PDF de devis/factures échouaient
