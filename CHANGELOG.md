@@ -1,5 +1,16 @@
 # Changelog
 
+## v12.3.5 — Nouveau design sobre des devis/factures
+
+- Remplacement du gabarit "premium" (panneau sombre, dégradés, formes
+  diagonales) par une mise en page classique et épurée, plus proche d'un
+  document professionnel standard : fond blanc, fine ligne d'accent
+  turquoise, encadrés gris-bleu clair pour les blocs d'informations, en-tête
+  de tableau sombre, ligne de total mise en évidence.
+- Mise en page basée sur des `<table>` HTML plutôt que sur CSS grid/flexbox,
+  ce qui la rend également robuste sur les moteurs de secours (wkhtmltopdf,
+  xhtml2pdf) en plus de Chromium.
+
 ## v12.3.4 — Moteur PDF Chromium (design pro devis/factures)
 
 - Le gabarit PDF (`document_html` dans `backend/app/helpers.py`) utilise CSS

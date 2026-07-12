@@ -208,7 +208,6 @@ def document_html(
 ) -> str:
     import html
     company = _company_info()
-    logo_uri = _logo_data_uri()
     signature_uri = _signature_data_uri()
     title = "DEVIS" if doc_type == "quote" else "FACTURE"
     status_labels = {
@@ -243,565 +242,316 @@ def document_html(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{safe(title)} {safe(number)} - RESTOR-PC</title>
 <style>
-  :root {{
-    --rp-blue:#0969e8;
-    --rp-blue2:#0aa5ff;
-    --rp-dark:#05080f;
-    --rp-dark2:#0b1220;
-    --rp-ink:#0f172a;
-    --rp-muted:#475569;
-    --rp-line:#dbe7f5;
-    --rp-soft:#f7fbff;
-    --rp-green:#10b981;
-  }}
   * {{ box-sizing:border-box; }}
   html, body {{ margin:0; padding:0; }}
   body {{
-    font-family:"Segoe UI", Arial, sans-serif;
-    color:#0f172a;
-    background:linear-gradient(135deg,#070b12,#101827 55%,#07101c);
+    font-family:Arial, Helvetica, sans-serif;
+    color:#1f2937;
+    background:#f1f5f9;
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
   }}
   .toolbar {{
-    position:sticky; top:0; z-index:10;
     padding:14px 20px;
-    background:rgba(5,8,15,.92);
-    border-bottom:1px solid rgba(9,105,232,.28);
-    backdrop-filter:blur(8px);
-  }}
-  .print-btn {{
-    border:1px solid rgba(10,165,255,.45);
-    border-radius:999px;
-    background:linear-gradient(135deg,#0969e8,#0aa5ff);
-    color:white;
-    padding:10px 16px;
-    font-weight:900;
-    cursor:pointer;
-    box-shadow:0 10px 24px rgba(9,105,232,.28);
-  }}
-  .preview {{
-    padding:28px 20px 50px;
-    display:flex;
-    justify-content:center;
-  }}
-  .page {{
-    position:relative;
-    overflow:hidden;
-    width:210mm;
-    min-height:297mm;
-    background:white;
-    box-shadow:0 28px 70px rgba(0,0,0,.45);
-    border-radius:0 0 18px 18px;
-  }}
-  .top {{
-    position:relative;
-    height:74mm;
-    display:grid;
-    grid-template-columns:52mm 1fr;
-  }}
-  .brand-panel {{
-    position:relative;
-    background:
-      radial-gradient(circle at 20% 15%,rgba(9,105,232,.22),transparent 34%),
-      linear-gradient(145deg,#05070c 0%,#080d16 58%,#111827 100%);
-    color:white;
-    padding:7mm 5.5mm;
-    overflow:hidden;
-  }}
-  .brand-panel:after {{
-    content:"";
-    position:absolute;
-    right:-32mm; top:-28mm;
-    width:70mm; height:118mm;
-    background:linear-gradient(130deg,transparent 0 36%,rgba(9,105,232,.88) 36% 44%,transparent 44%);
-    transform:rotate(0deg);
-  }}
-  .brand-panel img.logo {{
-    position:relative;
-    z-index:2;
-    width:42mm;
-    height:auto;
-    display:block;
-    margin:0 0 3mm;
-    filter:drop-shadow(0 8px 16px rgba(0,0,0,.35));
-  }}
-  .fallback-logo {{
-    position:relative; z-index:2;
-    font-size:24px; font-weight:950; letter-spacing:1px; margin-bottom:8mm;
-  }}
-  .company-name {{
-    color:#0aa5ff;
-    font-weight:950;
-    text-transform:uppercase;
-    letter-spacing:.6px;
-    margin:0 0 2mm;
-  }}
-  .company-line {{
-    position:relative;
-    z-index:2;
-    display:grid;
-    grid-template-columns:5mm 1fr;
-    gap:2.4mm;
-    margin:1.7mm 0;
-    font-size:8.8px;
-    line-height:1.25;
-    color:#e5edf8;
-  }}
-  .ico {{
-    color:#0aa5ff;
-    font-weight:900;
+    background:#0f172a;
     text-align:center;
   }}
-  .doc-panel {{
-    position:relative;
-    padding:8mm 11mm 0 11mm;
-    background:
-      linear-gradient(135deg,rgba(9,105,232,.12),transparent 32%),
-      white;
+  .print-btn {{
+    border:0;
+    border-radius:6px;
+    background:#13a7bd;
+    color:white;
+    padding:10px 18px;
+    font-weight:700;
+    cursor:pointer;
   }}
-  .doc-panel:before {{
-    content:"";
-    position:absolute;
-    left:-1mm; top:0;
-    width:28mm; height:74mm;
+  .page {{
+    width:210mm;
+    min-height:297mm;
+    margin:0 auto;
     background:white;
-    border-bottom-left-radius:42mm;
-    box-shadow:-16mm 0 0 white;
+    padding:16mm 16mm 14mm;
   }}
-  .doc-panel:after {{
-    content:"";
-    position:absolute;
-    right:11mm; top:0;
-    width:14mm; height:48mm;
-    background:linear-gradient(180deg,#0aa5ff,#0969e8);
-    transform:skewX(-28deg);
-    border-radius:0 0 3mm 3mm;
-    box-shadow:-4mm 3mm 0 rgba(9,105,232,.18);
+  table {{ border-collapse:collapse; }}
+  .doc-header {{ width:100%; }}
+  .doc-header td {{ vertical-align:top; }}
+  .company-name {{
+    margin:0 0 1.5mm;
+    font-size:19px;
+    font-weight:800;
+    color:#0f172a;
   }}
-  .doc-meta {{
-    position:relative;
-    z-index:2;
-    text-align:right;
+  .company-subtitle {{
+    margin:0 0 3mm;
+    font-size:10px;
+    color:#475569;
   }}
-  .doc-meta h1 {{
-    margin:0 0 8mm;
-    color:#0969e8;
-    font-size:30px;
-    line-height:1;
-    letter-spacing:.8px;
+  .company-line {{
+    margin:0.8mm 0;
+    font-size:10px;
+    line-height:1.5;
+    color:#334155;
+  }}
+  .doc-meta {{ text-align:right; }}
+  .doc-meta .doc-title {{
+    margin:0 0 3mm;
+    font-size:25px;
+    font-weight:800;
+    letter-spacing:.4px;
     text-transform:uppercase;
+    color:#0f172a;
   }}
   .doc-meta p {{
-    margin:3mm 0;
-    font-size:11.2px;
-    color:#1e293b;
+    margin:1mm 0;
+    font-size:10.2px;
+    color:#334155;
   }}
   .badge {{
     display:inline-block;
-    margin-top:3mm;
-    padding:2.5mm 5mm;
+    margin-top:2.5mm;
+    padding:1.6mm 4.5mm;
     border-radius:999px;
     background:#d7f8e9;
     color:#047857;
-    font-size:11px;
-    font-weight:900;
-  }}
-  .rule {{
-    position:absolute;
-    left:52mm;
-    right:11mm;
-    bottom:0;
-    height:1px;
-    background:linear-gradient(90deg,#0969e8,rgba(9,105,232,.15));
-  }}
-  .content {{
-    padding:5mm 11mm 23mm;
-  }}
-  .two {{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:12mm;
-  }}
-  .block {{
-    border-top:1.5px solid #dbe7f5;
-    padding-top:4mm;
-    min-height:22mm;
-  }}
-  .section-title {{
-    display:flex;
-    align-items:center;
-    gap:2.5mm;
-    margin:0 0 3mm;
-    color:#075cbf;
-    font-size:13px;
-    font-weight:950;
-    text-transform:uppercase;
-  }}
-  .section-title .mini {{
-    width:5mm; height:5mm; border-radius:50%;
-    background:linear-gradient(135deg,#0969e8,#0aa5ff);
-    color:white;
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
     font-size:10px;
+    font-weight:800;
   }}
-  .block p {{
+  .accent-line {{
+    height:2.6px;
+    background:#13a7bd;
+    border:0;
+    margin:5mm 0 6mm;
+  }}
+  .info-card {{
+    width:100%;
+    background:#eef3f8;
+    border-radius:8px;
+    margin-bottom:6mm;
+  }}
+  .info-card td {{
+    width:50%;
+    vertical-align:top;
+    padding:5mm 6mm;
+  }}
+  .info-card td + td {{ border-left:1px solid #d7e0ea; }}
+  .info-card h3, .technical h3, .payment-box h3 {{
+    margin:0 0 2.5mm;
+    font-size:11px;
+    font-weight:800;
+    text-transform:uppercase;
+    color:#0f172a;
+  }}
+  .info-card p {{
     margin:0;
-    font-size:11.2px;
-    line-height:1.42;
-    color:#1f2937;
+    font-size:10.4px;
+    line-height:1.55;
+    color:#334155;
   }}
-  .block strong {{ color:#111827; }}
-  .technical {{
-    margin-top:5mm;
-  }}
-  .technical ul {{
-    margin:3mm 0 0;
-    padding:0;
-    list-style:none;
-    display:grid;
-    gap:1.5mm;
-  }}
+  .info-card strong {{ color:#0f172a; }}
+  .technical {{ margin-bottom:6mm; }}
+  .technical ul {{ margin:0; padding:0; list-style:none; }}
   .technical li {{
     position:relative;
-    padding-left:7mm;
-    font-size:11.2px;
-    color:#263445;
+    padding-left:5mm;
+    margin:1.3mm 0;
+    font-size:10.4px;
+    line-height:1.4;
+    color:#334155;
   }}
   .technical li:before {{
-    content:"✓";
+    content:"\\2713";
     position:absolute;
-    left:0; top:.1mm;
-    width:4.2mm; height:4.2mm;
-    border-radius:50%;
-    background:#0969e8;
-    color:white;
-    font-size:9px;
-    line-height:4.2mm;
-    text-align:center;
+    left:0;
+    color:#13a7bd;
     font-weight:900;
   }}
-  table.items {{
-    break-inside:avoid;
-    page-break-inside:avoid;
-    width:100%;
-    border-collapse:collapse;
-    margin-top:5mm;
-    border:1px solid #dbe7f5;
-    box-shadow:0 5px 16px rgba(15,23,42,.04);
-  }}
+  table.items {{ width:100%; margin-bottom:6mm; }}
   table.items th {{
-    background:linear-gradient(135deg,#075bbb,#0969e8);
+    background:#1f2733;
     color:white;
+    font-size:9.6px;
+    font-weight:700;
     text-transform:uppercase;
-    font-size:10.5px;
     letter-spacing:.2px;
-    padding:3.2mm;
+    padding:3mm;
     text-align:left;
   }}
   table.items td {{
-    padding:3.2mm 3mm;
-    border-bottom:1px solid #dbe7f5;
+    padding:3mm;
+    border-bottom:1px solid #e2e8f0;
     vertical-align:top;
-    font-size:11.2px;
+    font-size:10.4px;
   }}
   .right {{ text-align:right; white-space:nowrap; }}
-  .designation strong {{
-    display:block;
-    margin-bottom:2mm;
-    color:#0f172a;
-  }}
-  .designation small {{
-    color:#64748b;
-    line-height:1.45;
-  }}
-  .totals {{
-    width:88mm;
-    margin-left:auto;
-    margin-top:0;
-    border:1px solid #dbe7f5;
-    border-top:0;
-  }}
-  .totals .row {{
-    display:grid;
-    grid-template-columns:1fr 32mm;
-    align-items:center;
-    min-height:7.5mm;
-    border-bottom:1px solid #dbe7f5;
-    font-size:11.2px;
-  }}
-  .totals .row span {{
-    padding-left:4mm;
-  }}
-  .totals .row strong {{
-    text-align:right;
-    padding-right:4mm;
-  }}
-  .totals .grand {{
-    background:linear-gradient(135deg,#075bbb,#0969e8);
-    color:white;
-    border-bottom:0;
-    font-size:16px;
-    font-weight:950;
-    min-height:10mm;
-  }}
-  .payment {{
-    break-inside:avoid;
-    page-break-inside:avoid;
-    margin-top:5mm;
-    padding-top:4mm;
-    border-top:1.5px solid #dbe7f5;
-  }}
-  .payment p {{
-    margin:0;
-    font-size:11.5px;
-    line-height:1.42;
+  .designation strong {{ display:block; margin-bottom:1.5mm; color:#0f172a; }}
+  .designation small {{ color:#64748b; line-height:1.45; }}
+  table.totals {{ width:80mm; margin:0 0 6mm auto; }}
+  table.totals td {{
+    padding:2.6mm 3mm;
+    font-size:10.4px;
+    border-bottom:1px solid #e2e8f0;
     color:#334155;
   }}
-  .signatures {{
-    break-inside:avoid;
-    page-break-inside:avoid;
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:12mm;
-    margin-top:5mm;
+  table.totals td.value {{ text-align:right; font-weight:700; color:#0f172a; }}
+  table.totals tr.grand td {{
+    background:#1f2733;
+    color:white;
+    font-size:12.5px;
+    font-weight:800;
+    border-bottom:0;
   }}
+  .payment-box {{
+    background:#eef3f8;
+    border-radius:8px;
+    padding:5mm 6mm;
+    margin-bottom:6mm;
+  }}
+  .payment-box p {{ margin:0 0 1.5mm; font-size:10.4px; line-height:1.5; color:#334155; }}
+  .payment-box p:last-child {{ margin-bottom:0; }}
+  table.signatures {{ width:100%; margin-bottom:6mm; }}
+  table.signatures td {{ width:50%; vertical-align:top; padding-right:8mm; }}
   .sig-title {{
-    color:#075cbf;
-    font-weight:950;
-    font-size:11.2px;
+    font-size:10.2px;
+    font-weight:800;
     text-transform:uppercase;
-    margin-bottom:3mm;
+    color:#0f172a;
+    margin-bottom:2.5mm;
   }}
   .sig {{
-    height:15.5mm;
-    border:1.4px dashed #94a3b8;
-    border-radius:4mm;
-    display:flex;
-    align-items:center;
-    justify-content:center;
+    height:16mm;
+    border:1px dashed #cbd5e1;
+    border-radius:6px;
+    display:table;
+    width:100%;
+  }}
+  .sig-inner {{
+    display:table-cell;
+    vertical-align:middle;
+    text-align:center;
     color:#94a3b8;
-    font-size:11.2px;
-    background:linear-gradient(180deg,#ffffff,#fbfdff);
-    overflow:hidden;
+    font-size:10.4px;
   }}
-  .sig img {{
-    max-width:58mm;
-    max-height:13.5mm;
-    object-fit:contain;
-    display:block;
-  }}
-  .client-signature img {{
-    filter:contrast(1.08);
-  }}
-  .restor-signature span {{
+  .sig img {{ max-width:52mm; max-height:12mm; object-fit:contain; }}
+  .doc-footer {{
+    margin-top:4mm;
+    font-size:9.2px;
+    line-height:1.5;
     color:#64748b;
-    font-weight:800;
-    letter-spacing:.4px;
-  }}
-  .footer {{
-    position:absolute;
-    left:0;
-    right:0;
-    bottom:0;
-    height:18mm;
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    color:#e5edf8;
-    font-size:10.5px;
-    line-height:1.35;
-    overflow:hidden;
-  }}
-  .footer-left {{
-    background:#05070c;
-    padding:3.2mm 10mm;
-    display:flex;
-    gap:3mm;
-    align-items:center;
-  }}
-  .footer-right {{
-    background:linear-gradient(135deg,#075bbb,#0969e8);
-    padding:3.2mm 10mm;
-    text-align:right;
-    font-weight:800;
-    position:relative;
-  }}
-  .footer-right:before {{
-    content:"";
-    position:absolute;
-    left:-22mm; top:0;
-    width:35mm; height:22mm;
-    background:#05070c;
-    transform:skewX(-35deg);
-  }}
-  .footer-right span {{
-    position:relative;
-    z-index:1;
-  }}
-  @media screen and (max-width:900px) {{
-    .page {{ transform:none; width:100%; min-height:auto; border-radius:0; }}
-    .top {{ height:auto; grid-template-columns:1fr; }}
-    .doc-panel:before,.doc-panel:after,.rule {{ display:none; }}
-    .two,.signatures {{ grid-template-columns:1fr; }}
-    .footer {{ position:static; grid-template-columns:1fr; height:auto; }}
+    border-top:1px solid #e2e8f0;
+    padding-top:4mm;
   }}
   @page {{ size:A4; margin:0; }}
   @media print {{
     body {{ background:white; }}
     .toolbar {{ display:none; }}
-    .preview {{
-      padding:0;
-      display:block;
-      /* Le rendu direct-vers-PDF (wkhtmltopdf) n'interprète pas de façon
-         fiable "display:flex + justify-content:center" combiné à
-         "margin:auto" sur .page ci-dessous : le résultat était une page
-         recadrée horizontalement (colonne de gauche hors cadre). En
-         impression, .page occupe donc directement toute la largeur A4,
-         sans centrage flex. */
-    }}
-    .page {{
-      width:210mm;
-      min-height:297mm;
-      height:297mm;
-      margin:0;
-      box-shadow:none;
-      border-radius:0;
-      overflow:hidden;
-    }}
-    .top {{ height:68mm; grid-template-columns:48mm 1fr; }}
-    .brand-panel {{ padding:5.5mm 4.5mm; }}
-    .brand-panel img.logo {{ width:38mm; margin-bottom:2mm; }}
-    .company-line {{ font-size:8.2px; margin:1.2mm 0; grid-template-columns:4mm 1fr; }}
-    .doc-panel {{ padding:7mm 9mm 0 9mm; }}
-    .doc-meta h1 {{ font-size:25px; margin-bottom:6mm; }}
-    .content {{ padding:4.5mm 9mm 20mm; }}
-    .block {{ min-height:19mm; }}
-    .technical {{ margin-top:4mm; }}
-    .technical li {{ font-size:10.7px; }}
-    table.items {{ margin-top:4mm; }}
-    table.items td {{ padding:2.8mm 2.6mm; font-size:10.8px; }}
-    .totals {{ width:76mm; }}
-    .payment {{ margin-top:4mm; padding-top:4mm; }}
-    .signatures {{ margin-top:4mm; }}
-    .sig {{ height:14mm; }}
-    .footer {{ height:16mm; font-size:8.8px; }}
-    .footer-left,.footer-right {{ padding:2.8mm 8mm; }}
+    .page {{ margin:0; }}
   }}
 </style>
 </head>
 <body>
 <div class="toolbar"><button class="print-btn" onclick="window.print()">Imprimer / PDF</button></div>
-<div class="preview">
 <main class="page">
-  <section class="top">
-    <aside class="brand-panel">
-      {f'<img class="logo" src="{logo_uri}" alt="Logo Restor-PC">' if logo_uri else '<div class="fallback-logo">RESTOR-PC</div>'}
-      <div class="company-line">
-        <div class="ico">●</div>
-        <div><div class="company-name">{safe(company["name"])}</div>{safe(company["subtitle"])}</div>
-      </div>
-      <div class="company-line"><div class="ico">⌖</div><div>{br(company["address"])}</div></div>
-      <div class="company-line"><div class="ico">☎</div><div>{safe(company["phone"])}</div></div>
-      <div class="company-line"><div class="ico">✉</div><div>{safe(company["email"])}</div></div>
-      <div class="company-line"><div class="ico">⊙</div><div>{safe(company["site"])}</div></div>
-      <div class="company-line"><div class="ico">▣</div><div>{safe(company["siret"])}</div></div>
-    </aside>
-    <section class="doc-panel">
-      <div class="doc-meta">
-        <h1>{safe(title)}</h1>
+  <table class="doc-header">
+    <tr>
+      <td>
+        <div class="company-name">{safe(company["name"])}</div>
+        <div class="company-subtitle">{safe(company["subtitle"])}</div>
+        <div class="company-line">Adresse : {br(company["address"])}</div>
+        <div class="company-line">Tél : {safe(company["phone"])}</div>
+        <div class="company-line">Email : {safe(company["email"])}</div>
+        <div class="company-line">Site : {safe(company["site"])}</div>
+        <div class="company-line">{safe(company["siret"])}</div>
+      </td>
+      <td class="doc-meta">
+        <div class="doc-title">{safe(title)}</div>
         <p><strong>N° {safe(number)}</strong></p>
-        <p>▣ Date : {safe(created)}</p>
-        <p>▣ {safe(due_label)} : {safe(due or "À réception")}</p>
+        <p>Date : {safe(created)}</p>
+        <p>{safe(due_label)} : {safe(due or "À réception")}</p>
         <span class="badge">{safe(label_status)}</span>
-      </div>
-    </section>
-    <div class="rule"></div>
-  </section>
+      </td>
+    </tr>
+  </table>
 
-  <section class="content">
-    <section class="two">
-      <div class="block">
-        <div class="section-title"><span class="mini">›</span>{safe(client_block_title)}</div>
+  <hr class="accent-line">
+
+  <table class="info-card">
+    <tr>
+      <td>
+        <h3>{safe(client_block_title)}</h3>
         <p><strong>{safe(client_name)}</strong><br>
         {br(client_address) if client_address else "Adresse client à compléter"}<br>
         Contact : {safe(client_contact or client_phone or "à compléter")}<br>
         Email : {safe(client_email or "à compléter")}</p>
-      </div>
-      <div class="block">
-        <div class="section-title"><span class="mini">›</span>INTERVENTION</div>
+      </td>
+      <td>
+        <h3>Intervention</h3>
         <p><strong>{safe(description)}</strong><br>
         Lieu : à compléter<br>
         Objet : diagnostic, réparation ou remise en service informatique.</p>
-      </div>
-    </section>
+      </td>
+    </tr>
+  </table>
 
-    <section class="technical">
-      <div class="section-title"><span class="mini">✓</span>DÉTAIL TECHNIQUE DE L'INTERVENTION</div>
-      <ul>
-        {''.join(f'<li>{safe(item)}</li>' for item in detail_bullets)}
-      </ul>
-    </section>
-
-    <table class="items">
-      <thead>
-        <tr>
-          <th>Désignation</th>
-          <th class="right">Qté</th>
-          <th class="right">Prix unitaire</th>
-          <th class="right">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td class="designation">
-            <strong>{safe(detail_title)}</strong>
-            <small>{safe(detail_subtitle)}</small>
-          </td>
-          <td class="right">1</td>
-          <td class="right">{amount:.2f} €</td>
-          <td class="right"><strong>{total:.2f} €</strong></td>
-        </tr>
-      </tbody>
-    </table>
-
-    <section class="totals">
-      <div class="row"><span>Sous-total</span><strong>{amount:.2f} €</strong></div>
-      <div class="row"><span>TVA</span><strong>Non applicable</strong></div>
-      <div class="row"><span>Article 293 B du CGI</span><strong>0.00 €</strong></div>
-      <div class="row grand"><span>{safe(total_label)}</span><strong>{total:.2f} €</strong></div>
-    </section>
-
-    <section class="payment">
-      <div class="section-title"><span class="mini">€</span>RÈGLEMENT</div>
-      <p>{safe(company["payment_terms"])}</p>
-      {extra}
-    </section>
-
-    <section class="signatures">
-      <div>
-        <div class="sig-title">Signature client</div>
-        <div class="sig client-signature">{f'<img src="{client_signature_uri}" alt="Signature client">' if client_signature_uri else '<span>Bon pour accord</span>'}</div>
-      </div>
-      <div>
-        <div class="sig-title">Signature Restor-PC</div>
-        <div class="sig restor-signature">{f'<img src="{signature_uri}" alt="Signature Restor-PC">' if signature_uri else '<span>Signature Restor-PC</span>'}</div>
-      </div>
-    </section>
+  <section class="technical">
+    <h3>Détail technique de l'intervention</h3>
+    <ul>
+      {''.join(f'<li>{safe(item)}</li>' for item in detail_bullets)}
+    </ul>
   </section>
 
-  <footer class="footer">
-    <div class="footer-left">
-      <strong>ⓘ</strong>
-      <div>{safe(company["legal"])}<br>Document généré par Restor-PC RescueGrid v11.2.</div>
-    </div>
-    <div class="footer-right">
-      <span>Merci pour votre confiance.<br>{safe(company["site"])}</span>
-    </div>
-  </footer>
+  <table class="items">
+    <thead>
+      <tr>
+        <th>Désignation</th>
+        <th class="right">Qté</th>
+        <th class="right">Prix unitaire</th>
+        <th class="right">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="designation">
+          <strong>{safe(detail_title)}</strong>
+          <small>{safe(detail_subtitle)}</small>
+        </td>
+        <td class="right">1</td>
+        <td class="right">{amount:.2f} €</td>
+        <td class="right"><strong>{total:.2f} €</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td>Sous-total</td><td class="value">{amount:.2f} €</td></tr>
+    <tr><td>TVA</td><td class="value">Non applicable</td></tr>
+    <tr><td>Article 293 B du CGI</td><td class="value">0.00 €</td></tr>
+    <tr class="grand"><td>{safe(total_label)}</td><td class="value">{total:.2f} €</td></tr>
+  </table>
+
+  <section class="payment-box">
+    <h3>Règlement</h3>
+    <p>{safe(company["payment_terms"])}</p>
+    {extra}
+  </section>
+
+  <table class="signatures">
+    <tr>
+      <td>
+        <div class="sig-title">Signature client</div>
+        <div class="sig"><div class="sig-inner">{f'<img src="{client_signature_uri}" alt="Signature client">' if client_signature_uri else 'Bon pour accord'}</div></div>
+      </td>
+      <td>
+        <div class="sig-title">Signature Restor-PC</div>
+        <div class="sig"><div class="sig-inner">{f'<img src="{signature_uri}" alt="Signature Restor-PC">' if signature_uri else 'Signature Restor-PC'}</div></div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="doc-footer">
+    {safe(company["legal"])}<br>
+    Merci pour votre confiance. Document généré par Restor-PC RescueGrid.
+  </div>
 </main>
-</div>
 </body>
 </html>"""
 
