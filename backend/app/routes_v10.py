@@ -29,6 +29,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import stripe_payments
 from .auth import get_admin_or_redirect, get_user_or_redirect, hash_password, log_activity, validate_password_strength
 from .database import get_session
 from .helpers import generate_ai_summary, quote_html, invoice_html, paginate_query, render_document_pdf, try_pdf_response
@@ -104,6 +105,70 @@ def send_document_email(
         return True, "sent_pdf" if subtype == "pdf" else "sent_html_fallback"
     except Exception as exc:
         return False, f"smtp_error:{exc}"
+
+
+# ── Relances devis/factures — logique partagée (bouton manuel + scheduler) ──
+# Fonctions module-level (pas dans la closure de init_v10_routes) afin d'être
+# appelables à la fois par les routes HTTP ci-dessous et par le scheduler
+# automatique (app/reminders_scheduler.py, désactivé par défaut). `user=None`
+# signale une relance système (pas d'action d'un technicien) — voir log_activity
+# et Reminder.sent_by_user_id (nullable).
+
+def send_quote_reminder(session: Session, quote: Quote, user: User | None = None) -> tuple[bool, str]:
+    client = quote.client
+    if not client or not client.email:
+        return False, "missing_client_email"
+    subject = f"Rappel — Devis Restor-PC {quote.quote_number} en attente de réponse"
+    body = (
+        f"Bonjour {client.name},\n\n"
+        f"Nous restons à votre disposition concernant le devis {quote.quote_number} "
+        f"({quote.amount:.2f} €), toujours en attente de votre réponse.\n\n"
+        "Cordialement,\nRESTOR-PC\ncontact@restor-pc.fr"
+    )
+    ok, detail = send_document_email(
+        to_email=client.email, subject=subject, body=body,
+        html_attachment=quote_html(quote), attachment_name=f"{quote.quote_number}.pdf",
+    )
+    origin = "auto" if user is None else "manuel"
+    if ok:
+        session.add(Reminder(target_type="quote", target_id=quote.id, sent_by_user_id=user.id if user else None))
+        log_activity(session, user, "quote.remind", f"{quote.quote_number} ({origin})")
+        session.commit()
+        return True, "sent"
+    log_activity(session, user, "quote.remind_error", f"{quote.quote_number} {detail} ({origin})")
+    session.commit()
+    return False, detail
+
+
+def send_invoice_reminder(session: Session, invoice: Invoice, user: User | None = None) -> tuple[bool, str]:
+    client = invoice.client
+    if not client or not client.email:
+        return False, "missing_client_email"
+    # N'échoue jamais la relance si Stripe est indisponible : ensure_payment_link
+    # retourne None dans ce cas et la ligne de paiement est simplement omise.
+    payment_link = stripe_payments.ensure_payment_link(session, invoice)
+    payment_line = f"\nPayer en ligne par carte bancaire : {payment_link}\n" if payment_link else ""
+    subject = f"Rappel — Facture Restor-PC {invoice.invoice_number} en attente de paiement"
+    body = (
+        f"Bonjour {client.name},\n\n"
+        f"Nous vous rappelons que la facture {invoice.invoice_number} "
+        f"({invoice.amount:.2f} €) est toujours en attente de règlement.\n"
+        f"{payment_line}\n"
+        "Cordialement,\nRESTOR-PC\ncontact@restor-pc.fr"
+    )
+    ok, detail = send_document_email(
+        to_email=client.email, subject=subject, body=body,
+        html_attachment=invoice_html(invoice), attachment_name=f"{invoice.invoice_number}.pdf",
+    )
+    origin = "auto" if user is None else "manuel"
+    if ok:
+        session.add(Reminder(target_type="invoice", target_id=invoice.id, sent_by_user_id=user.id if user else None))
+        log_activity(session, user, "invoice.remind", f"{invoice.invoice_number} ({origin})")
+        session.commit()
+        return True, "sent"
+    log_activity(session, user, "invoice.remind_error", f"{invoice.invoice_number} {detail} ({origin})")
+    session.commit()
+    return False, detail
 
 
 def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: Path, sanitize_filename, intervention_dir_fn, resolve_storage_path):
@@ -306,11 +371,14 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
         if not client or not client.email:
             target = f"/client/{client.id}?mail=missing_client_email&next=invoices" if client else "/invoices?mail=missing_client_email"
             return RedirectResponse(target, status_code=303)
+        payment_link = stripe_payments.ensure_payment_link(session, invoice_obj)
+        payment_line = f"\nPayer en ligne par carte bancaire : {payment_link}\n" if payment_link else ""
         subject = f"Facture Restor-PC {invoice_obj.invoice_number}"
         body = (
             f"Bonjour {client.name},\n\n"
             f"Veuillez trouver votre facture Restor-PC {invoice_obj.invoice_number}.\n"
-            f"Montant : {invoice_obj.amount:.2f} €.\n\n"
+            f"Montant : {invoice_obj.amount:.2f} €.\n"
+            f"{payment_line}\n"
             "Cordialement,\nRESTOR-PC\ncontact@restor-pc.fr"
         )
         html_doc = invoice_html(invoice_obj)
@@ -369,9 +437,13 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
             "days_overdue": (now.date() - inv.due_date.date()).days if inv.due_date else 0,
             "last_reminder": _last_reminder_at(session, "invoice", inv.id),
         } for inv in overdue_invoices]
+        from . import reminders_scheduler
         return templates.TemplateResponse("relances.html", {"active_page": "relances",
             "request": request, "user": user,
             "quote_rows": quote_rows, "invoice_rows": invoice_rows,
+            "reminder_schedule_enabled": reminders_scheduler.REMINDER_SCHEDULE_ENABLED,
+            "reminder_schedule_hour": reminders_scheduler.REMINDER_SCHEDULE_HOUR,
+            "reminder_cooldown_days": reminders_scheduler.REMINDER_COOLDOWN_DAYS,
         })
 
     @router.post("/quote/{quote_id}/remind")
@@ -382,27 +454,11 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
         quote_obj = session.scalars(select(Quote).where(Quote.id == quote_id)).first()
         if not quote_obj:
             raise HTTPException(status_code=404, detail="Devis introuvable")
-        client = quote_obj.client
-        if not client or not client.email:
-            return RedirectResponse("/relances?mail=missing_client_email", status_code=303)
-        subject = f"Rappel — Devis Restor-PC {quote_obj.quote_number} en attente de réponse"
-        body = (
-            f"Bonjour {client.name},\n\n"
-            f"Nous restons à votre disposition concernant le devis {quote_obj.quote_number} "
-            f"({quote_obj.amount:.2f} €), toujours en attente de votre réponse.\n\n"
-            "Cordialement,\nRESTOR-PC\ncontact@restor-pc.fr"
-        )
-        ok, detail = _send_document_email(
-            to_email=client.email, subject=subject, body=body,
-            html_attachment=quote_html(quote_obj), attachment_name=f"{quote_obj.quote_number}.pdf",
-        )
+        ok, detail = send_quote_reminder(session, quote_obj, user=user)
         if ok:
-            session.add(Reminder(target_type="quote", target_id=quote_id, sent_by_user_id=user.id))
-            log_activity(session, user, "quote.remind", quote_obj.quote_number)
-            session.commit()
             return RedirectResponse("/relances?mail=sent", status_code=303)
-        log_activity(session, user, "quote.remind_error", f"{quote_obj.quote_number} {detail}")
-        session.commit()
+        if detail == "missing_client_email":
+            return RedirectResponse("/relances?mail=missing_client_email", status_code=303)
         return RedirectResponse("/relances?mail=error", status_code=303)
 
     @router.post("/invoice/{invoice_id}/remind")
@@ -413,27 +469,11 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
         invoice_obj = session.scalars(select(Invoice).where(Invoice.id == invoice_id)).first()
         if not invoice_obj:
             raise HTTPException(status_code=404, detail="Facture introuvable")
-        client = invoice_obj.client
-        if not client or not client.email:
-            return RedirectResponse("/relances?mail=missing_client_email", status_code=303)
-        subject = f"Rappel — Facture Restor-PC {invoice_obj.invoice_number} en attente de paiement"
-        body = (
-            f"Bonjour {client.name},\n\n"
-            f"Nous vous rappelons que la facture {invoice_obj.invoice_number} "
-            f"({invoice_obj.amount:.2f} €) est toujours en attente de règlement.\n\n"
-            "Cordialement,\nRESTOR-PC\ncontact@restor-pc.fr"
-        )
-        ok, detail = _send_document_email(
-            to_email=client.email, subject=subject, body=body,
-            html_attachment=invoice_html(invoice_obj), attachment_name=f"{invoice_obj.invoice_number}.pdf",
-        )
+        ok, detail = send_invoice_reminder(session, invoice_obj, user=user)
         if ok:
-            session.add(Reminder(target_type="invoice", target_id=invoice_id, sent_by_user_id=user.id))
-            log_activity(session, user, "invoice.remind", invoice_obj.invoice_number)
-            session.commit()
             return RedirectResponse("/relances?mail=sent", status_code=303)
-        log_activity(session, user, "invoice.remind_error", f"{invoice_obj.invoice_number} {detail}")
-        session.commit()
+        if detail == "missing_client_email":
+            return RedirectResponse("/relances?mail=missing_client_email", status_code=303)
         return RedirectResponse("/relances?mail=error", status_code=303)
 
     @router.post("/quote/{quote_id}/convert")

@@ -18,6 +18,28 @@
 </div>
 {% endif %}
 
+{% if request.query_params.get('payment_link_url') %}
+<div class="notice success">
+  ✓ Lien de paiement généré —
+  <code id="stripe-link-value">{{ request.query_params.get('payment_link_url') }}</code>
+  <button type="button" onclick="copyStripeLink()">📋 Copier</button>
+</div>
+<script>
+function copyStripeLink() {
+  const el = document.getElementById('stripe-link-value');
+  navigator.clipboard.writeText(el.textContent.trim()).catch(() => {});
+}
+</script>
+{% elif request.query_params.get('payment_link_error') %}
+<div class="notice error">
+  {% if request.query_params.get('payment_link_error') == 'stripe_not_configured' %}
+  ✗ Paiement en ligne non configuré — renseigne STRIPE_SECRET_KEY dans .env pour l'activer.
+  {% else %}
+  ✗ Impossible de générer le lien de paiement (voir logs serveur).
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="grid2">
   <div class="stack">
     <div class="card">
@@ -70,6 +92,9 @@
               <div class="action-dropdown">
                 <a href="/invoice/{{ inv.id }}/pdf" target="_blank">▤ Voir PDF</a>
                 <form action="/invoice/{{ inv.id }}/send-email" method="post"><button>✉ Envoyer email</button></form>
+                {% if stripe_enabled and inv.status not in ('paid', 'cancelled') %}
+                <form action="/invoice/{{ inv.id }}/payment-link" method="post"><button>💳 Lien de paiement</button></form>
+                {% endif %}
                 {% if inv.status != 'issued' %}
                 <form action="/invoice/{{ inv.id }}/status" method="post">
                   <input type="hidden" name="status" value="issued">

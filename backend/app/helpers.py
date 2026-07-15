@@ -590,6 +590,16 @@ def invoice_html(invoice: Invoice) -> str:
     due = invoice.due_date.strftime("%d/%m/%Y") if invoice.due_date else ""
     paid = f"<p><strong>Payé le :</strong> {invoice.paid_at.strftime('%d/%m/%Y')}</p>" if invoice.paid_at else ""
     method = f"<p><strong>Mode de paiement :</strong> {html.escape(invoice.payment_method)}</p>" if invoice.payment_method else ""
+    # Le lien est généré à l'avance par l'appelant (ensure_payment_link côté
+    # routes_v10.py / main.py) — cette fonction ne fait qu'afficher l'attribut
+    # déjà à jour sur l'objet, sans effet de bord ni accès réseau ici.
+    payment_link = ""
+    if invoice.status not in ("paid", "cancelled") and invoice.stripe_payment_link_url:
+        link = html.escape(invoice.stripe_payment_link_url)
+        payment_link = (
+            f'<p><strong>Payer en ligne par carte bancaire :</strong> '
+            f'<a href="{link}">{link}</a></p>'
+        )
     detail_title, detail_subtitle, detail_bullets = _service_presentation(desc)
     return document_html(
         "invoice",
@@ -602,7 +612,7 @@ def invoice_html(invoice: Invoice) -> str:
         0.0,
         invoice.amount,
         invoice.status,
-        extra=paid + method,
+        extra=paid + method + payment_link,
         detail_title=detail_title,
         detail_subtitle=detail_subtitle,
         detail_bullets=detail_bullets,

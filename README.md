@@ -46,4 +46,4 @@ Utiliser le mot de passe d'application Infomaniak, pas forcément le mot de pass
 
 ## Version
 
-v12.3.2 — espace client (mot de passe / Google / GitHub), planning & RDV, relances devis/factures, export comptable, sauvegarde planifiée, mode multi-poste/Synology, pagination, verrouillage de compte, pipeline ADK WinPE automatisé, revue de sécurité complète (secrets, cookies, XSS, en-têtes HTTP, conteneur non-root).
+v12.4.0 — paiement en ligne Stripe sur les factures (webhook de confirmation automatique), relances devis/factures automatisables (cron interne désactivé par défaut), espace client (mot de passe / Google / GitHub), planning & RDV, export comptable, sauvegarde planifiée, mode multi-poste/Synology, pagination, verrouillage de compte, pipeline ADK WinPE automatisé, revue de sécurité complète (secrets, cookies, XSS, en-têtes HTTP, conteneur non-root).

@@ -9,6 +9,14 @@
   <p>Devis en attente de réponse et factures impayées après échéance.</p>
 </div>
 
+<div class="notice {% if reminder_schedule_enabled %}success{% endif %}">
+  {% if reminder_schedule_enabled %}
+  ⏰ Relances automatiques activées — vérification quotidienne à {{ '%02d'|format(reminder_schedule_hour) }}h00 UTC, renvoi au plus tôt {{ reminder_cooldown_days }} jours après la dernière relance.
+  {% else %}
+  ⏰ Relances automatiques désactivées — les envois ci-dessous restent manuels (bouton « Relancer »). Voir REMINDER_SCHEDULE_ENABLED dans .env pour les automatiser.
+  {% endif %}
+</div>
+
 {% if request.query_params.get('mail') %}
 <div class="notice {% if request.query_params.get('mail') == 'sent' %}success{% elif request.query_params.get('mail') == 'error' %}error{% endif %}">
   {% if request.query_params.get('mail') == 'sent' %}✓ Relance envoyée avec succès.

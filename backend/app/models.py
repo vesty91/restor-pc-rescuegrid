@@ -137,6 +137,13 @@ class Invoice(Base):
     notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
+    # Lien de paiement Stripe Checkout (voir app/stripe_payments.py). Mis en
+    # cache car une Session Stripe expire (~24h) : regeneree a la demande si
+    # stripe_link_expires_at est depasse.
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stripe_payment_link_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    stripe_link_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     intervention: Mapped["Intervention | None"] = relationship(back_populates="invoice")
     client: Mapped["Client | None"] = relationship(back_populates="invoices")
 

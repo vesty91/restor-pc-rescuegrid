@@ -42,6 +42,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import backup as backup_module
+from . import reminders_scheduler
+from . import stripe_payments
 from .database import get_session, init_db, SessionLocal
 from .helpers import apply_intervention_filters, generate_ai_summary, invoice_html, try_pdf_response
 from .models import Client, Intervention, Invoice, Machine, Part, Quote, Ticket, User
@@ -450,8 +452,11 @@ templates.env.globals["overdue_count"] = overdue_count
 # /upload est exclu : il est appelé par l'agent Windows (script, pas un navigateur),
 # qui n'envoie ni Origin ni Referer, et dispose de sa propre protection
 # (authentification par session ou UPLOAD_API_KEY, voir verify_upload_access).
+# /stripe/webhook est exclu de la même façon : appelé serveur à serveur par
+# Stripe (pas de cookie de session, pas d'Origin/Referer), et protégé par sa
+# propre vérification de signature (voir stripe_payments.verify_and_handle_webhook).
 CSRF_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-CSRF_EXEMPT_PATHS = {"/upload"}
+CSRF_EXEMPT_PATHS = {"/upload", "/stripe/webhook"}
 
 
 # ── En-têtes de sécurité HTTP ───────────────────────────────────────────────
@@ -546,6 +551,7 @@ async def on_startup() -> None:
     # démarrer le scheduler que depuis un handler startup *async* (les handlers sync
     # sont exécutés dans un threadpool par Starlette, sans event loop courant).
     backup_module.start_backup_scheduler(BASE_DIR, STORAGE_DIR)
+    reminders_scheduler.start_reminder_scheduler()
 
 
 # ── Routes noyau ──────────────────────────────────────────────────────────────
@@ -786,4 +792,50 @@ def invoice_pdf(invoice_id: int, request: Request, session: Session = Depends(ge
     invoice = session.scalars(select(Invoice).where(Invoice.id == invoice_id)).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Facture introuvable")
+    stripe_payments.ensure_payment_link(session, invoice)
     return try_pdf_response(invoice_html(invoice), f"{invoice.invoice_number}.pdf")
+
+
+# ── Paiement en ligne (Stripe) ─────────────────────────────────────────────────
+
+@app.post("/invoice/{invoice_id}/payment-link")
+def create_invoice_payment_link(invoice_id: int, request: Request, session: Session = Depends(get_session)):
+    """Génère (ou renouvelle) le lien de paiement Stripe d'une facture et
+    redirige vers la liste des factures avec l'URL en query string, affichée
+    par le template (bouton copier-coller) — voir templates/invoices.html."""
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
+    invoice = session.scalars(select(Invoice).where(Invoice.id == invoice_id)).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Facture introuvable")
+    if not stripe_payments.stripe_enabled():
+        return RedirectResponse("/invoices?payment_link_error=stripe_not_configured", status_code=303)
+    link = stripe_payments.ensure_payment_link(session, invoice)
+    if not link:
+        return RedirectResponse("/invoices?payment_link_error=creation_failed", status_code=303)
+    params = urlencode({"payment_link_id": invoice.id, "payment_link_url": link})
+    return RedirectResponse(f"/invoices?{params}", status_code=303)
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request, session: Session = Depends(get_session)):
+    """Point d'entrée serveur à serveur appelé par Stripe (pas de session
+    navigateur) : la vérification de la signature `Stripe-Signature` tient
+    lieu d'authentification. Voir stripe_payments.verify_and_handle_webhook."""
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+    ok = stripe_payments.verify_and_handle_webhook(payload, sig_header, session)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Signature webhook invalide")
+    return JSONResponse({"received": True})
+
+
+@app.get("/pay/success", response_class=HTMLResponse)
+def pay_success(request: Request, invoice: str | None = None):
+    return templates.TemplateResponse("pay_success.html", {"request": request, "invoice_number": invoice})
+
+
+@app.get("/pay/cancel", response_class=HTMLResponse)
+def pay_cancel(request: Request, invoice: str | None = None):
+    return templates.TemplateResponse("pay_cancel.html", {"request": request, "invoice_number": invoice})

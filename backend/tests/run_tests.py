@@ -706,6 +706,146 @@ def test_invoice_invalid_intervention_id() -> None:
     record("POST /invoices intervention_id invalide -> 400", r.status_code == 400, f"status={r.status_code}")
 
 
+# ── Tests Stripe (paiement en ligne) ────────────────────────────────────────
+
+def _create_test_invoice(notes: str, status: str = "issued") -> "int | None":
+    from app.database import SessionLocal
+    from app.models import Client, Intervention, Invoice
+    from sqlalchemy import select
+
+    with SessionLocal() as session:
+        client_row = Client(name=f"Client Stripe {notes}", email="stripe-test@example.com")
+        session.add(client_row)
+        session.commit()
+        intervention = Intervention(client_id=client_row.id, title=f"Intervention {notes}")
+        session.add(intervention)
+        session.commit()
+        intervention_id = intervention.id
+
+    r = client.post("/invoices", data={
+        "intervention_id": intervention_id, "amount": "80", "notes": notes, "status": status,
+    }, follow_redirects=False)
+    if r.status_code != 303:
+        return None
+    with SessionLocal() as session:
+        invoice = session.scalars(
+            select(Invoice).where(Invoice.notes == notes).order_by(Invoice.id.desc())
+        ).first()
+        return invoice.id if invoice else None
+
+
+def test_invoice_pdf_without_stripe_key() -> None:
+    """Sans STRIPE_SECRET_KEY (comportement par défaut), le PDF facture doit
+    continuer à se générer sans lien de paiement et sans jamais planter."""
+    invoice_id = _create_test_invoice("Facture test sans cle Stripe")
+    if not invoice_id:
+        record("GET /invoice/{id}/pdf sans clé Stripe", False, "facture introuvable")
+        return
+    r = client.get(f"/invoice/{invoice_id}/pdf")
+    ok = r.status_code == 200 and "payer en ligne" not in r.text.lower()
+    record("GET /invoice/{id}/pdf sans clé Stripe -> pas de lien de paiement, pas de crash", ok, f"status={r.status_code}")
+
+
+def test_stripe_webhook_invalid_signature_rejected() -> None:
+    """Sans STRIPE_WEBHOOK_SECRET configuré (ou avec une signature invalide),
+    le webhook doit être rejeté (400) sans jamais modifier de facture."""
+    c = TestClient(app)
+    r = c.post(
+        "/stripe/webhook",
+        content=b'{"type": "checkout.session.completed", "data": {"object": {"metadata": {}}}}',
+        headers={"stripe-signature": "invalid", "content-type": "application/json"},
+    )
+    record("POST /stripe/webhook signature invalide -> 400", r.status_code == 400, f"status={r.status_code}")
+
+
+def test_ensure_payment_link_skips_paid_invoice() -> None:
+    """ensure_payment_link ne doit jamais générer de lien pour une facture déjà
+    payée ou annulée, même si Stripe est configuré (aucun appel réseau requis
+    pour cette vérification : elle intervient avant toute création de Session)."""
+    from app import stripe_payments
+    from app.database import SessionLocal
+    from app.models import Invoice
+
+    original_key = stripe_payments.STRIPE_SECRET_KEY
+    stripe_payments.STRIPE_SECRET_KEY = "sk_test_fake_for_unit_test"
+    try:
+        with SessionLocal() as session:
+            invoice = Invoice(
+                invoice_number="INV-TESTSTRIPE-0001", amount=42.0, tax=0.0, total=42.0, status="paid",
+            )
+            session.add(invoice)
+            session.commit()
+            link = stripe_payments.ensure_payment_link(session, invoice)
+        record("ensure_payment_link ignore une facture payée", link is None, f"link={link}")
+    finally:
+        stripe_payments.STRIPE_SECRET_KEY = original_key
+
+
+def test_ensure_payment_link_disabled_without_key() -> None:
+    """Sans STRIPE_SECRET_KEY, ensure_payment_link retourne toujours None, quel
+    que soit le statut de la facture (comportement par défaut du projet)."""
+    from app import stripe_payments
+    from app.database import SessionLocal
+    from app.models import Invoice
+
+    record("stripe_enabled() est faux par défaut", stripe_payments.stripe_enabled() is False, f"key={stripe_payments.STRIPE_SECRET_KEY!r}")
+    with SessionLocal() as session:
+        invoice = Invoice(
+            invoice_number="INV-TESTSTRIPE-0002", amount=10.0, tax=0.0, total=10.0, status="issued",
+        )
+        session.add(invoice)
+        session.commit()
+        link = stripe_payments.ensure_payment_link(session, invoice)
+    record("ensure_payment_link() sans clé -> None", link is None, f"link={link}")
+
+
+# ── Tests relances automatiques (scheduler) ─────────────────────────────────
+
+def test_reminder_scheduler_disabled_by_default() -> None:
+    """Sans REMINDER_SCHEDULE_ENABLED=true, start_reminder_scheduler() ne doit
+    jamais démarrer de tâche de fond (relances 100% manuelles par défaut)."""
+    from app import reminders_scheduler
+
+    record(
+        "REMINDER_SCHEDULE_ENABLED désactivé par défaut",
+        reminders_scheduler.REMINDER_SCHEDULE_ENABLED is False,
+        f"enabled={reminders_scheduler.REMINDER_SCHEDULE_ENABLED}",
+    )
+    task = reminders_scheduler.start_reminder_scheduler()
+    record("start_reminder_scheduler() retourne None par défaut", task is None, f"task={task}")
+
+
+def test_reminder_cooldown_skips_recent() -> None:
+    """Un Reminder envoyé il y a 2 jours (< REMINDER_COOLDOWN_DAYS) doit
+    empêcher un nouveau renvoi automatique."""
+    from app import reminders_scheduler
+    from datetime import datetime, timedelta, timezone
+
+    recent = datetime.now(timezone.utc) - timedelta(days=2)
+    ok = reminders_scheduler._is_in_cooldown(recent, reminders_scheduler.REMINDER_COOLDOWN_DAYS)
+    record("Cooldown relance : envoyé il y a 2j -> pas de renvoi (7j)", ok is True, f"in_cooldown={ok}")
+
+
+def test_reminder_cooldown_allows_after_delay() -> None:
+    """Un Reminder envoyé il y a 8 jours (> REMINDER_COOLDOWN_DAYS=7) doit
+    autoriser un nouveau renvoi automatique."""
+    from app import reminders_scheduler
+    from datetime import datetime, timedelta, timezone
+
+    old = datetime.now(timezone.utc) - timedelta(days=8)
+    ok = reminders_scheduler._is_in_cooldown(old, reminders_scheduler.REMINDER_COOLDOWN_DAYS)
+    record("Cooldown relance : envoyé il y a 8j -> renvoi autorisé (7j)", ok is False, f"in_cooldown={ok}")
+
+
+def test_reminder_cooldown_no_previous_reminder() -> None:
+    """Sans relance préalable (last_sent_at=None), le cooldown ne doit jamais
+    bloquer le premier envoi automatique."""
+    from app import reminders_scheduler
+
+    ok = reminders_scheduler._is_in_cooldown(None, reminders_scheduler.REMINDER_COOLDOWN_DAYS)
+    record("Cooldown relance : aucune relance précédente -> renvoi autorisé", ok is False, f"in_cooldown={ok}")
+
+
 def main() -> int:
     print("=== Tests Restor-PC RescueGrid ===\n")
     test_health()
@@ -758,6 +898,18 @@ def main() -> int:
     test_security_headers_present()
     test_cookie_not_secure_by_default()
     test_invoice_invalid_intervention_id()
+
+    # Stripe (paiement en ligne)
+    test_invoice_pdf_without_stripe_key()
+    test_stripe_webhook_invalid_signature_rejected()
+    test_ensure_payment_link_skips_paid_invoice()
+    test_ensure_payment_link_disabled_without_key()
+
+    # Relances automatiques (scheduler)
+    test_reminder_scheduler_disabled_by_default()
+    test_reminder_cooldown_skips_recent()
+    test_reminder_cooldown_allows_after_delay()
+    test_reminder_cooldown_no_previous_reminder()
 
     passed = sum(1 for _, ok, _ in results if ok)
     failed = sum(1 for _, ok, _ in results if not ok)

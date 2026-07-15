@@ -217,6 +217,53 @@ configuration additionnelle requise sur Synology au-delà des variables
 `STORAGE_PATH/backups`, donc sur le volume Synology monté — pensez à inclure
 ce dossier dans votre plan Hyper Backup NAS pour une copie hors du NAS lui-même.
 
+### 9. Paiement en ligne — configurer le webhook Stripe
+
+Le lien de paiement sur les factures (`app/stripe_payments.py`) est optionnel :
+sans `STRIPE_SECRET_KEY`, rien ne change. Pour l'activer en production :
+
+1. Récupérer la **clé secrète** (mode live, une fois les tests validés en mode
+   test) sur https://dashboard.stripe.com/apikeys et la renseigner dans `.env` :
+
+   ```
+   STRIPE_SECRET_KEY="sk_live_..."
+   ```
+
+2. Créer le webhook sur https://dashboard.stripe.com/webhooks :
+   - URL du point de terminaison : `https://espace-client.restor-pc.fr/stripe/webhook`
+   - Événement à écouter : `checkout.session.completed`
+   - Copier la **clé de signature** (`whsec_...`) affichée après création et la
+     renseigner dans `.env` :
+
+     ```
+     STRIPE_WEBHOOK_SECRET="whsec_..."
+     ```
+
+3. `docker compose -f docker-compose.synology.yml up -d backend` (ou `restart`)
+   pour recharger les nouvelles variables d'environnement.
+4. Vérifier depuis le dashboard Stripe (bouton "Envoyer un événement de test")
+   que le webhook répond `200`. Une facture réellement payée via le lien passe
+   alors automatiquement au statut « Payée » sans action du technicien.
+
+Sans HTTPS actif (étape 5 ci-dessus), Stripe ne peut pas appeler le webhook —
+le paiement fonctionne quand même côté client (Checkout Stripe est toujours en
+HTTPS), mais la confirmation automatique du statut ne pourra pas remonter tant
+que `espace-client.restor-pc.fr` n'est pas servi en HTTPS.
+
+### 10. Relances automatiques — activer le cron interne (optionnel)
+
+Par défaut, les relances devis/factures en retard restent 100% manuelles
+(bouton « Relancer » sur `/relances`). Pour les automatiser :
+
+```
+REMINDER_SCHEDULE_ENABLED=true
+REMINDER_SCHEDULE_HOUR=8        # heure UTC de vérification quotidienne
+REMINDER_COOLDOWN_DAYS=7        # délai minimum entre deux relances du même document
+```
+
+Puis redémarrer le backend. L'état courant (activé/désactivé) est affiché en
+bannière sur `/relances`.
+
 ## Hors périmètre (pour l'instant)
 
 - Intégration applicative MinIO/S3 (stockage objet) dans le backend.

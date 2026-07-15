@@ -1,5 +1,33 @@
 # Changelog
 
+## v12.4.0 — Paiement en ligne Stripe + relances automatiques
+
+- **Paiement en ligne (Stripe Checkout)** : chaque facture émise peut générer
+  un lien de paiement par carte bancaire (`app/stripe_payments.py`), affiché
+  dans le PDF, l'email d'envoi/relance et sur `/invoices` (bouton « Lien de
+  paiement » + bandeau copier-coller). La confirmation de paiement est
+  automatique via webhook Stripe (`POST /stripe/webhook`, événement
+  `checkout.session.completed`) : la facture passe alors à `paid` sans action
+  du technicien. Fonctionnalité entièrement optionnelle : sans
+  `STRIPE_SECRET_KEY` dans `.env`, le comportement est strictement identique à
+  avant (pas de lien, pas d'appel réseau). Nouvelles colonnes sur `invoice`
+  (migration Alembic `0006_stripe_invoice_fields`) : `stripe_checkout_session_id`,
+  `stripe_payment_link_url`, `stripe_link_expires_at`.
+- **Relances automatiques (cron interne)** : les devis/factures en retard
+  peuvent désormais être relancés automatiquement (`app/reminders_scheduler.py`,
+  calqué sur le scheduler de sauvegarde), avec un délai minimum de 7 jours
+  entre deux relances du même document. **Désactivé par défaut**
+  (`REMINDER_SCHEDULE_ENABLED=false`) : les relances restent 100% manuelles
+  (bouton sur `/relances`) tant que la variable n'est pas activée. Une
+  bannière sur `/relances` indique l'état courant (activé/désactivé).
+- Extraction de `send_quote_reminder`/`send_invoice_reminder` en fonctions
+  partagées (`app/routes_v10.py`), réutilisées par les routes HTTP existantes
+  et par le nouveau scheduler.
+- 12 nouveaux tests de régression (`backend/tests/run_tests.py`) : PDF sans clé
+  Stripe, webhook à signature invalide, facture payée n'obtenant jamais de
+  lien, scheduler désactivé par défaut, cooldown de relance (skip/allow/aucun
+  historique).
+
 ## v12.3.6 — PDF devis/factures tenant sur une seule page
 
 - Resserrement général des marges/espacements du gabarit PDF (`document_html`

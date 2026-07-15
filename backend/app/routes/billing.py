@@ -19,6 +19,7 @@ from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import stripe_payments
 from ..database import get_session
 from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
@@ -61,6 +62,7 @@ def invoices_list(request: Request, page: int = 1, session: Session = Depends(ge
         "page": page,
         "total_pages": total_pages,
         "total_items": total_items,
+        "stripe_enabled": stripe_payments.stripe_enabled(),
     })
 
 
