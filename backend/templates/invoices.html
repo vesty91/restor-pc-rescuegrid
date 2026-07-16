@@ -21,14 +21,16 @@
 {% if request.query_params.get('payment_link_url') %}
 <div class="notice success">
   ✓ Lien de paiement généré —
-  <code id="stripe-link-value">{{ request.query_params.get('payment_link_url') }}</code>
-  <button type="button" onclick="copyStripeLink()">📋 Copier</button>
+  <a id="stripe-link-open" href="{{ request.query_params.get('payment_link_url') }}" target="_blank" rel="noopener">🔗 Ouvrir la page de paiement</a>
+  <button type="button" onclick="copyStripeLink()">📋 Copier le lien (à envoyer au client)</button>
+  <code id="stripe-link-value" style="display:none">{{ request.query_params.get('payment_link_url') }}</code>
 </div>
 <script>
 function copyStripeLink() {
   const el = document.getElementById('stripe-link-value');
   navigator.clipboard.writeText(el.textContent.trim()).catch(() => {});
 }
+window.open(document.getElementById('stripe-link-open').href, '_blank', 'noopener');
 </script>
 {% elif request.query_params.get('payment_link_error') %}
 <div class="notice error">
