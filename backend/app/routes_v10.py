@@ -737,6 +737,35 @@ def init_v10_routes(templates: Jinja2Templates, storage_dir: Path, report_dir: P
             "request": request, "user": user, "message": "Mot de passe mis à jour.", "error": None,
         })
 
+    @router.post("/settings/2fa-reset")
+    def reset_two_fa(
+        request: Request,
+        current_password: str = Form(...),
+        session: Session = Depends(get_session),
+    ):
+        """Révoque la 2FA active (perte de téléphone, changement d'app) : le
+        prochain login relance l'enrôlement obligatoire (/2fa/setup) — voir
+        main.py. Ne permet pas de désactiver définitivement la 2FA pour le rôle
+        admin, seulement de la ré-enrôler."""
+        from .auth import verify_password
+        user, redirect = get_user_or_redirect(request, session)
+        if redirect:
+            return redirect
+        if not verify_password(current_password, user.hashed_password):
+            return templates.TemplateResponse("settings.html", {"active_page": "settings",
+                "request": request, "user": user, "message": None, "error": "Mot de passe actuel incorrect.",
+            })
+        user.totp_enabled = False
+        user.totp_secret = None
+        user.totp_recovery_codes = None
+        log_activity(session, user, "2fa.reset", user.username)
+        session.commit()
+        return templates.TemplateResponse("settings.html", {"active_page": "settings",
+            "request": request, "user": user,
+            "message": "2FA réinitialisée — un nouvel enrôlement sera demandé à la prochaine connexion.",
+            "error": None,
+        })
+
     @router.get("/users", response_class=HTMLResponse)
     def users_page(request: Request, session: Session = Depends(get_session)):
         user, redirect = get_admin_or_redirect(request, session)

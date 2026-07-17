@@ -35,6 +35,10 @@ tools/*.iso
 # Volumes Docker Synology (données Postgres/MinIO)
 volumes/
 
+# Marqueur local du déploiement automatique (scripts/nas_auto_deploy.sh)
+.last_deployed_commit
+logs/
+
 # Artefacts d'intervention générés par l'agent (tests locaux, imports manuels)
 /Intervention_*/
 /Intervention_*.zip

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codes de secours 2FA - Restor-PC RescueGrid</title>
+  <style>
+    :root{color-scheme:dark;--bg:#040b14;--card:#0d1b2f;--line:#1b3656;--text:#eef7ff;--muted:#93a9c5;--blue:#0a84ff;--amber:#f59e0b;}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:Segoe UI,Inter,Arial,sans-serif;color:var(--text);min-height:100vh;
+      display:flex;align-items:center;justify-content:center;
+      background:
+        radial-gradient(circle at 20% 10%,rgba(10,132,255,.18),transparent 35%),
+        radial-gradient(circle at 80% 80%,rgba(0,163,255,.10),transparent 35%),
+        linear-gradient(135deg,#020812 0%,#06101d 50%,#02050b 100%);
+    }
+    .wrap{width:min(440px,94vw)}
+    .card{
+      background:linear-gradient(180deg,rgba(13,27,47,.96),rgba(7,19,33,.98));
+      border:1px solid var(--line);border-radius:18px;padding:28px 26px;
+      box-shadow:0 22px 60px rgba(0,0,0,.5);
+    }
+    .card h2{font-size:18px;margin-bottom:4px;color:var(--text)}
+    .warn{background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25);
+      padding:10px 14px;border-radius:10px;margin:14px 0;font-size:13px;line-height:1.5}
+    .codes{
+      display:grid;grid-template-columns:1fr 1fr;gap:8px;
+      background:#081426;border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:18px;
+    }
+    .codes div{font-family:monospace;font-size:15px;color:#9bd2ff;text-align:center;letter-spacing:.03em}
+    button{
+      width:100%;border:0;
+      background:linear-gradient(135deg,#0875ff,#005bd9);
+      color:#fff;font:inherit;font-weight:800;font-size:15px;
+      padding:12px;border-radius:12px;cursor:pointer;
+      box-shadow:0 10px 26px rgba(10,132,255,.22);transition:opacity .15s;
+    }
+    button:hover{opacity:.88}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2>2FA activée — codes de secours</h2>
+      <div class="warn">⚠ Notez ces 8 codes dans un endroit sûr (gestionnaire de mots de passe, papier). Chacun ne peut être utilisé qu'une seule fois pour vous reconnecter si vous perdez votre téléphone. Ils ne seront plus jamais affichés après cette page.</div>
+      <div class="codes">
+        {% for code in recovery_codes %}
+        <div>{{ code }}</div>
+        {% endfor %}
+      </div>
+      <form method="post" action="/2fa/setup/continue">
+        <button>J'ai noté mes codes — continuer</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

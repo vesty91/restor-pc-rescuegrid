@@ -4,11 +4,14 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import time
 import zipfile
 from pathlib import Path
+
+import pyotp
 
 # Backend root on path
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -38,6 +41,7 @@ with SessionLocal() as _session:
 
 client = TestClient(app)
 results: list[tuple[str, bool, str]] = []
+ADMIN_TOTP_SECRET: str | None = None
 
 
 def record(name: str, ok: bool, detail: str = "") -> None:
@@ -46,9 +50,28 @@ def record(name: str, ok: bool, detail: str = "") -> None:
     print(f"[{status}] {name}" + (f" — {detail}" if detail else ""))
 
 
+def _extract_totp_secret(html: str) -> str | None:
+    match = re.search(r'<div class="secret">([A-Z0-9]+)</div>', html)
+    return match.group(1) if match else None
+
+
 def login() -> None:
+    """Connexion admin de bout en bout, y compris le premier enrôlement 2FA
+    obligatoire (voir main.py POST /login, /2fa/setup) — l'admin de test créé
+    par create_default_admin() n'a jamais encore de 2FA active."""
+    global ADMIN_TOTP_SECRET
     r = client.post("/login", data={"username": "admin", "password": "testadmin2026"}, follow_redirects=False)
-    record("login admin", r.status_code == 303 and "access_token" in r.cookies, f"status={r.status_code}")
+    if r.status_code == 303 and r.headers.get("location") == "/2fa/setup":
+        setup_page = client.get("/2fa/setup")
+        secret = _extract_totp_secret(setup_page.text)
+        ADMIN_TOTP_SECRET = secret
+        code = pyotp.TOTP(secret).now() if secret else ""
+        r2 = client.post("/2fa/setup", data={"code": code}, follow_redirects=False)
+        record("2FA enrôlement admin", r2.status_code == 200 and "codes de secours" in r2.text.lower(), f"status={r2.status_code}")
+        r3 = client.post("/2fa/setup/continue", follow_redirects=False)
+        record("login admin (après 2FA)", r3.status_code == 303 and "access_token" in r3.cookies, f"status={r3.status_code}")
+    else:
+        record("login admin", r.status_code == 303 and "access_token" in r.cookies, f"status={r.status_code}")
 
 
 def test_health() -> None:
@@ -688,10 +711,15 @@ def test_security_headers_present() -> None:
 def test_cookie_not_secure_by_default() -> None:
     """COOKIE_SECURE=false par défaut (dev local http://) : le cookie de
     session ne doit pas porter l'attribut Secure, sans quoi aucun navigateur
-    ne le renverrait en http://localhost."""
+    ne le renverrait en http://localhost. Le compte admin étant enrôlé en 2FA
+    (voir login()), il faut compléter la vérification TOTP pour obtenir le
+    cookie access_token final."""
     c = TestClient(app)
     r = c.post("/login", data={"username": "admin", "password": "testadmin2026"}, follow_redirects=False)
     set_cookie = r.headers.get("set-cookie", "")
+    record("POST /login admin déjà enrôlé -> redirect /2fa/verify", r.status_code == 303 and r.headers.get("location") == "/2fa/verify")
+    r2 = c.post("/2fa/verify", data={"code": pyotp.TOTP(ADMIN_TOTP_SECRET).now()}, follow_redirects=False)
+    set_cookie = r2.headers.get("set-cookie", "")
     record(
         "Cookie access_token sans Secure quand COOKIE_SECURE=false",
         "access_token" in set_cookie and "secure" not in set_cookie.lower(),
@@ -846,6 +874,103 @@ def test_reminder_cooldown_no_previous_reminder() -> None:
     record("Cooldown relance : aucune relance précédente -> renvoi autorisé", ok is False, f"in_cooldown={ok}")
 
 
+# ── Tests 2FA (TOTP obligatoire pour le rôle admin) ─────────────────────────
+
+def _create_second_admin() -> tuple[str, str]:
+    from app.auth import hash_password
+    from app.database import SessionLocal
+    from app.models import User
+    from sqlalchemy import select
+
+    username, password = "admin2fa", "admin2fapassword2026"
+    with SessionLocal() as session:
+        existing = session.scalars(select(User).where(User.username == username)).first()
+        if not existing:
+            session.add(User(
+                username=username, hashed_password=hash_password(password),
+                full_name="Admin 2FA Test", role="admin", email="admin2fa@rescuegrid.local",
+            ))
+            session.commit()
+    return username, password
+
+
+def test_2fa_forced_on_first_admin_login() -> None:
+    """Un compte admin sans 2FA active doit être redirigé vers /2fa/setup après
+    un mot de passe correct, sans jamais recevoir de cookie access_token."""
+    username, password = _create_second_admin()
+    c = TestClient(app)
+    r = c.post("/login", data={"username": username, "password": password}, follow_redirects=False)
+    record(
+        "Admin sans 2FA -> redirect /2fa/setup (pas d'accès direct)",
+        r.status_code == 303 and r.headers.get("location") == "/2fa/setup" and "access_token" not in r.cookies,
+        f"status={r.status_code} location={r.headers.get('location')}",
+    )
+
+    # Tant que le code n'est pas confirmé, aucune route protégée n'est accessible.
+    r2 = c.get("/", follow_redirects=False)
+    record("Accès dashboard bloqué pendant l'enrôlement 2FA en attente", r2.status_code == 303 and r2.headers.get("location") == "/login")
+
+
+def test_2fa_setup_wrong_code_rejected() -> None:
+    username, password = _create_second_admin()
+    c = TestClient(app)
+    c.post("/login", data={"username": username, "password": password}, follow_redirects=False)
+    c.get("/2fa/setup")  # fige le secret dans le cookie pending_2fa (voir two_fa_setup_page)
+    r = c.post("/2fa/setup", data={"code": "000000"}, follow_redirects=False)
+    record("Code TOTP invalide à l'enrôlement -> refusé", r.status_code == 200 and "invalide" in r.text.lower(), f"status={r.status_code}")
+    record("access_token toujours absent après code invalide", "access_token" not in r.cookies)
+
+
+def test_2fa_full_enrollment_and_login_cycle() -> None:
+    """Enrôlement complet (code correct) puis nouvelle connexion (code TOTP
+    valide) et vérification qu'un code de secours n'est utilisable qu'une fois."""
+    username, password = _create_second_admin()
+    c = TestClient(app)
+    c.post("/login", data={"username": username, "password": password}, follow_redirects=False)
+    setup_page = c.get("/2fa/setup")
+    secret = _extract_totp_secret(setup_page.text)
+    record("Secret TOTP présent sur la page d'enrôlement", bool(secret))
+
+    r = c.post("/2fa/setup", data={"code": pyotp.TOTP(secret).now()}, follow_redirects=False)
+    record("Code TOTP correct -> codes de secours affichés", r.status_code == 200 and "codes de secours" in r.text.lower(), f"status={r.status_code}")
+    recovery_codes = re.findall(r">([0-9A-F]{4}-[0-9A-F]{4})<", r.text)
+    record("8 codes de secours générés", len(recovery_codes) == 8, f"count={len(recovery_codes)}")
+
+    r2 = c.post("/2fa/setup/continue", follow_redirects=False)
+    record("Finalisation enrôlement -> access_token émis", r2.status_code == 303 and "access_token" in r2.cookies)
+
+    # Nouvelle session : le prochain login doit demander /2fa/verify (plus /2fa/setup).
+    c2 = TestClient(app)
+    r3 = c2.post("/login", data={"username": username, "password": password}, follow_redirects=False)
+    record("Admin déjà enrôlé -> redirect /2fa/verify", r3.status_code == 303 and r3.headers.get("location") == "/2fa/verify")
+
+    r4 = c2.post("/2fa/verify", data={"code": "000000"}, follow_redirects=False)
+    record("Code TOTP invalide à la vérification -> refusé", "access_token" not in r4.cookies and "invalide" in r4.text.lower())
+
+    r5 = c2.post("/2fa/verify", data={"code": pyotp.TOTP(secret).now()}, follow_redirects=False)
+    record("Code TOTP correct à la vérification -> access_token émis", r5.status_code == 303 and "access_token" in r5.cookies)
+
+    # Code de secours : utilisable une fois, puis rejeté à la seconde tentative.
+    c3 = TestClient(app)
+    c3.post("/login", data={"username": username, "password": password}, follow_redirects=False)
+    code_to_use = recovery_codes[0]
+    r6 = c3.post("/2fa/verify", data={"code": code_to_use}, follow_redirects=False)
+    record("Code de secours valide -> access_token émis", r6.status_code == 303 and "access_token" in r6.cookies)
+
+    c4 = TestClient(app)
+    c4.post("/login", data={"username": username, "password": password}, follow_redirects=False)
+    r7 = c4.post("/2fa/verify", data={"code": code_to_use}, follow_redirects=False)
+    record("Code de secours déjà utilisé -> refusé à la 2e tentative", "access_token" not in r7.cookies)
+
+
+def test_2fa_not_required_for_technician() -> None:
+    """La 2FA n'est obligatoire que pour le rôle admin (voir choix utilisateur) :
+    un compte technicien reçoit directement son access_token."""
+    tech_client = _create_technician_and_login()
+    r = tech_client.get("/", follow_redirects=False)
+    record("Technicien accède au dashboard sans 2FA", r.status_code == 200)
+
+
 def main() -> int:
     print("=== Tests Restor-PC RescueGrid ===\n")
     test_health()
@@ -910,6 +1035,14 @@ def main() -> int:
     test_reminder_cooldown_skips_recent()
     test_reminder_cooldown_allows_after_delay()
     test_reminder_cooldown_no_previous_reminder()
+
+    # 2FA (TOTP obligatoire pour le rôle admin) — ordre important : ces tests
+    # partagent le même compte "admin2fa" et dépendent de son état 2FA au fil
+    # de l'exécution (non enrôlé -> refus de code -> enrôlement complet).
+    test_2fa_forced_on_first_admin_login()
+    test_2fa_setup_wrong_code_rejected()
+    test_2fa_full_enrollment_and_login_cycle()
+    test_2fa_not_required_for_technician()
 
     passed = sum(1 for _, ok, _ in results if ok)
     failed = sum(1 for _, ok, _ in results if not ok)

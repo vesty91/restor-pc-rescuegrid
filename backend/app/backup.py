@@ -30,6 +30,11 @@ logger = logging.getLogger(__name__)
 BACKUP_SCHEDULE_ENABLED = os.getenv("BACKUP_SCHEDULE_ENABLED", "true").strip().lower() in {"1", "true", "yes"}
 BACKUP_SCHEDULE_HOUR = int(os.getenv("BACKUP_SCHEDULE_HOUR", "3"))
 BACKUP_RETENTION_COUNT = int(os.getenv("BACKUP_RETENTION_COUNT", "14"))
+BACKUP_ALERT_EMAIL = os.getenv("BACKUP_ALERT_EMAIL", "").strip()
+# Notification push (ntfy.sh ou serveur ntfy auto-hébergé) : alternative/complément
+# à l'email, quasi instantanée sur mobile/desktop. URL complète du topic, ex.
+# https://ntfy.sh/mon-topic-secret ou https://ntfy.mondomaine.fr/mon-topic.
+BACKUP_ALERT_NTFY_URL = os.getenv("BACKUP_ALERT_NTFY_URL", "").strip()
 
 _PREFIX = "rescuegrid_"
 
@@ -138,6 +143,80 @@ def list_backups(storage_dir: Path) -> list[dict]:
     ]
 
 
+def _send_backup_alert_ntfy(error_message: str) -> None:
+    """Notification push best-effort via ntfy (https://ntfy.sh ou serveur
+    auto-hébergé) : alternative à l'email, quasi instantanée sur mobile grâce à
+    l'app ntfy. Utilise httpx (déjà une dépendance du projet, voir app/oauth.py)
+    plutôt que d'ajouter `requests`."""
+    if not BACKUP_ALERT_NTFY_URL:
+        return
+    try:
+        import httpx
+
+        httpx.post(
+            BACKUP_ALERT_NTFY_URL,
+            content=f"Erreur : {error_message}\n\nNouvelle tentative automatique dans 1h.".encode("utf-8"),
+            headers={
+                "Title": "RescueGrid - Echec sauvegarde",
+                "Priority": "urgent",
+                "Tags": "warning,rescuegrid",
+            },
+            timeout=10,
+        )
+    except Exception:
+        logger.exception("Échec de l'envoi de l'alerte ntfy de sauvegarde")
+
+
+def _send_backup_alert(error_message: str) -> None:
+    """Alerte (email et/ou ntfy) best-effort en cas d'échec de sauvegarde
+    planifiée — sans cela, un échec (ex. incompatibilité de version pg_dump/
+    serveur) peut passer inaperçu pendant des mois, les seules traces étant des
+    logs applicatifs que personne ne consulte au quotidien. N'est jamais
+    bloquant : une alerte ratée ne doit pas empêcher la nouvelle tentative de
+    sauvegarde 1h plus tard (voir _backup_scheduler_loop)."""
+    _send_backup_alert_ntfy(error_message)
+    if not BACKUP_ALERT_EMAIL:
+        return
+    try:
+        import smtplib
+        from email.message import EmailMessage
+        from email.utils import formataddr
+
+        # Import tardif : évite tout import circulaire au chargement du module
+        # (routes_v10.py importe déjà des éléments d'app.models/app.database).
+        from .routes_v10 import _smtp_config
+
+        cfg = _smtp_config()
+        if not cfg["enabled"] or not cfg["password"]:
+            return
+
+        msg = EmailMessage()
+        msg["From"] = formataddr((cfg["from_name"], cfg["sender"]))
+        msg["To"] = BACKUP_ALERT_EMAIL
+        msg["Subject"] = "Alerte RescueGrid - echec de la sauvegarde planifiee"
+        msg.set_content(
+            "La sauvegarde automatique planifiee de RescueGrid a echoue.\n\n"
+            f"Erreur : {error_message}\n\n"
+            "Une nouvelle tentative aura lieu automatiquement dans 1 heure. "
+            "Si l'erreur persiste, une intervention manuelle est necessaire "
+            "(voir les logs du conteneur backend)."
+        )
+        if cfg["use_ssl"]:
+            with smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=30) as smtp:
+                smtp.login(cfg["user"], cfg["password"])
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(cfg["host"], cfg["port"], timeout=30) as smtp:
+                smtp.ehlo()
+                if cfg["use_tls"]:
+                    smtp.starttls()
+                    smtp.ehlo()
+                smtp.login(cfg["user"], cfg["password"])
+                smtp.send_message(msg)
+    except Exception:
+        logger.exception("Échec de l'envoi de l'alerte email de sauvegarde")
+
+
 def _seconds_until_next_run() -> float:
     now = datetime.now(timezone.utc)
     target = now.replace(hour=BACKUP_SCHEDULE_HOUR, minute=0, second=0, microsecond=0)
@@ -155,8 +234,9 @@ async def _backup_scheduler_loop(base_dir: Path, storage_dir: Path) -> None:
             perform_backup_and_rotate(base_dir, storage_dir)
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.exception("Échec de la sauvegarde planifiée — nouvelle tentative dans 1h")
+            _send_backup_alert(str(exc))
             await asyncio.sleep(3600)
 
 

@@ -27,6 +27,22 @@
     </form>
   </div>
 
+  {% if user.role == 'admin' %}
+  <div class="card">
+    <h2>Double authentification (2FA)</h2>
+    {% if user.totp_enabled %}
+    <p class="muted" style="margin-bottom:14px">✓ Activée — obligatoire pour le compte administrateur.</p>
+    <form action="/settings/2fa-reset" method="post" onsubmit="return confirm('Réinitialiser la 2FA ? Un nouvel enrôlement sera demandé à la prochaine connexion.');">
+      <label>Mot de passe actuel (confirmation)</label>
+      <input type="password" name="current_password" required>
+      <button style="margin-top:16px">Réinitialiser la 2FA (changement de téléphone)</button>
+    </form>
+    {% else %}
+    <p class="muted">⚠ Non activée — sera demandée à la prochaine connexion.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <div class="card">
     <h2>Email / SMTP Infomaniak</h2>
     <p class="muted" style="margin-bottom:14px">Expéditeur : <strong>contact@restor-pc.fr</strong>. Le mot de passe SMTP se configure dans le fichier <code>.env</code>.</p>

@@ -139,6 +139,29 @@ services:
     networks:
       - rescuegrid
 
+  # === Optionnel : Uptime Kuma (monitoring / alertes) ===
+  # Port exposé sur toutes les interfaces (donc joignable depuis le LAN à
+  # http://<IP-du-NAS>:3001) et non limité à 127.0.0.1 comme pgAdmin/MinIO
+  # ci-dessus : ce tableau de bord est destiné à une consultation régulière
+  # par l'exploitant, pas seulement à une administration ponctuelle. Reste
+  # inaccessible depuis internet tant que le port 3001 n'est pas redirigé sur
+  # le routeur (seul le port 443 l'est actuellement, voir docs/SYNOLOGY_DEPLOY.md).
+  # Le socket Docker est monté en lecture seule pour permettre le type de
+  # moniteur "Docker Container" (statut réel des conteneurs, pas seulement un
+  # ping HTTP) — c'est un niveau de confiance élevé accordé à cette seule
+  # image, mais Uptime Kuma est un projet mûr et largement utilisé en prod.
+  uptime_kuma:
+    image: louislam/uptime-kuma:2.4.0
+    container_name: rescuegrid_uptime_kuma
+    restart: unless-stopped
+    volumes:
+      - ./volumes/uptime-kuma:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "3001:3001"
+    networks:
+      - rescuegrid
+
 # Remarque : tous les services ci-dessus utilisent des bind mounts (./volumes/...)
 # plutot que des volumes nommes Docker, pour pouvoir pointer ./volumes/storage
 # vers un dossier partage Synology monte sur l'hote (voir docs/SYNOLOGY_DEPLOY.md).

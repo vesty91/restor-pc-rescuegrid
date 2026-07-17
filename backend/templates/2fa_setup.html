@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Activation 2FA - Restor-PC RescueGrid</title>
+  <style>
+    :root{color-scheme:dark;--bg:#040b14;--card:#0d1b2f;--line:#1b3656;--text:#eef7ff;--muted:#93a9c5;--blue:#0a84ff;--blue2:#00a3ff;--danger:#ef4444;}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:Segoe UI,Inter,Arial,sans-serif;color:var(--text);min-height:100vh;
+      display:flex;align-items:center;justify-content:center;
+      background:
+        radial-gradient(circle at 20% 10%,rgba(10,132,255,.18),transparent 35%),
+        radial-gradient(circle at 80% 80%,rgba(0,163,255,.10),transparent 35%),
+        linear-gradient(135deg,#020812 0%,#06101d 50%,#02050b 100%);
+    }
+    .wrap{width:min(420px,94vw)}
+    .card{
+      background:linear-gradient(180deg,rgba(13,27,47,.96),rgba(7,19,33,.98));
+      border:1px solid var(--line);border-radius:18px;padding:28px 26px;
+      box-shadow:0 22px 60px rgba(0,0,0,.5);
+    }
+    .card h2{font-size:18px;margin-bottom:4px;color:var(--text)}
+    .card .sub{color:var(--muted);font-size:13px;margin-bottom:18px;line-height:1.5}
+    .qr{background:#fff;padding:14px;border-radius:12px;display:flex;justify-content:center;margin-bottom:16px}
+    .qr img{width:200px;height:200px}
+    .secret{
+      background:#081426;border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+      font-family:monospace;font-size:14px;color:#9bd2ff;text-align:center;letter-spacing:.05em;
+      margin-bottom:18px;word-break:break-all;
+    }
+    label{display:block;margin-top:6px;margin-bottom:5px;color:#a8bdd8;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+    input{
+      width:100%;background:#081426;border:1px solid var(--line);color:var(--text);
+      border-radius:11px;padding:11px 13px;font:inherit;font-size:18px;outline:none;text-align:center;letter-spacing:.15em;
+    }
+    input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.18)}
+    button{
+      margin-top:18px;width:100%;border:0;
+      background:linear-gradient(135deg,#0875ff,#005bd9);
+      color:#fff;font:inherit;font-weight:800;font-size:15px;
+      padding:12px;border-radius:12px;cursor:pointer;
+      box-shadow:0 10px 26px rgba(10,132,255,.22);transition:opacity .15s;
+    }
+    button:hover{opacity:.88}
+    .error{background:rgba(239,68,68,.12);color:var(--danger);border:1px solid rgba(239,68,68,.22);
+      padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2>Activation de la double authentification</h2>
+      <div class="sub">Obligatoire pour le compte administrateur. Scannez ce code avec une app comme Google Authenticator, Authy ou Ente Auth, puis saisissez le code à 6 chiffres affiché.</div>
+      {% if error %}
+      <div class="error">{{ error }}</div>
+      {% endif %}
+      <div class="qr"><img src="{{ qr_data_uri }}" alt="QR code 2FA"></div>
+      <div class="secret">{{ secret }}</div>
+      <form method="post">
+        <label>Code à 6 chiffres</label>
+        <input name="code" required autofocus inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code">
+        <button>Activer la 2FA</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

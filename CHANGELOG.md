@@ -1,5 +1,39 @@
 # Changelog
 
+## v12.5.0 — Double authentification admin, fiabilisation des sauvegardes, monitoring et déploiement continu
+
+- **Double authentification (2FA/TOTP) obligatoire pour le compte admin** :
+  enrôlement forcé au premier login (QR code + secret, `pyotp`/`qrcode`),
+  vérification à chaque connexion suivante, 8 codes de secours à usage unique
+  générés à l'activation, réinitialisation possible depuis `/settings`
+  (protégée par le mot de passe courant). Non exigée pour les comptes
+  technicien. Nouvelle migration Alembic `0007_totp_2fa` (colonnes
+  `totp_secret`, `totp_enabled`, `totp_recovery_codes` sur `user`). Limitation
+  du nombre de tentatives de code TOTP par IP/compte.
+- **Fiabilisation des sauvegardes automatiques** : corrige un échec silencieux
+  de `pg_dump` en production (incompatibilité de version entre le client du
+  conteneur backend et PostgreSQL 16 du NAS — `backend/Dockerfile` installe
+  désormais `postgresql-client-16` depuis le dépôt officiel PGDG). Ajout
+  d'alertes push (ntfy, `BACKUP_ALERT_NTFY_URL`) en complément de l'alerte
+  email existante en cas d'échec de sauvegarde planifiée. Restauration réelle
+  vérifiée sur une base de test à partir d'une sauvegarde de production.
+- **Monitoring auto-hébergé (Uptime Kuma)** : nouveau service dans
+  `docker-compose.synology.yml` (image épinglée `2.4.0`), pour surveiller la
+  disponibilité des conteneurs applicatifs directement depuis le NAS.
+- **Déploiement automatique (CD) sans SSH manuel** : `scripts/nas_auto_deploy.sh`,
+  déclenché périodiquement par le Planificateur de tâches Synology, détecte les
+  nouveaux commits sur `origin/main` et enchaîne `git pull` → reconstruction de
+  l'image `backend` → redémarrage → migration Alembic → vérification
+  `/health`, avec notification ntfy de succès/échec (`scripts/notify_deploy.sh`).
+  Le marqueur `.last_deployed_commit` n'avance qu'après un déploiement
+  intégralement réussi : en cas d'échec à n'importe quelle étape, l'ancienne
+  version continue de tourner sans interruption. Voir
+  [SYNOLOGY_DEPLOY.md](docs/SYNOLOGY_DEPLOY.md) section 11.
+- 20 nouveaux tests de régression (`backend/tests/run_tests.py`) couvrant
+  l'ensemble du flux 2FA (enrôlement forcé, code invalide, codes de secours,
+  usage unique, non-exigence pour les techniciens). 93 tests au total, tous
+  au vert.
+
 ## v12.4.0 — Paiement en ligne Stripe + relances automatiques
 
 - **Paiement en ligne (Stripe Checkout)** : chaque facture émise peut générer

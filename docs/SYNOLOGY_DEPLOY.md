@@ -264,6 +264,67 @@ REMINDER_COOLDOWN_DAYS=7        # délai minimum entre deux relances du même do
 Puis redémarrer le backend. L'état courant (activé/désactivé) est affiché en
 bannière sur `/relances`.
 
+### 11. Déploiement automatique (CD) — sans manipulation SSH manuelle
+
+Un script (`scripts/nas_auto_deploy.sh`) automatise la mise à jour : détection
+d'un nouveau commit sur `origin/main`, `git pull`, reconstruction de l'image
+`backend`, redémarrage, migration Alembic, puis vérification `/health` —
+avec notification push (ntfy) en cas de succès **ou** d'échec.
+
+**Pourquoi un script planifié sur le NAS plutôt qu'un webhook GitHub → NAS ?**
+Le NAS n'expose sur internet que le port 443 (voir étape 5) ; un webhook de
+déploiement obligerait à ouvrir un nouveau port, ou à donner au conteneur
+backend (déjà public) un accès au socket Docker de l'hôte — un niveau de
+confiance équivalent à root accordé à un service exposé publiquement. Un
+script planifié tournant directement sur l'hôte atteint le même objectif
+(zéro manipulation SSH après un `git push`) sans nouvelle surface d'attaque ;
+seul coût : jusqu'à ~15 minutes de latence entre le push et le déploiement
+effectif (configurable via la fréquence de la tâche planifiée).
+
+**Sûr par construction** : le marqueur `.last_deployed_commit` (à la racine du
+projet, non versionné) n'avance qu'après un déploiement **intégralement**
+réussi. Si le build, le redémarrage, la migration ou le healthcheck échoue,
+l'ancien conteneur continue de tourner sans interruption, une alerte ntfy est
+envoyée, et le script retentera le même commit à la prochaine exécution.
+
+**Mise en place (une seule fois) :**
+
+1. Rendre les scripts exécutables sur le NAS (droits perdus lors du transfert
+   Windows → Linux) :
+
+   ```bash
+   chmod +x /volume1/docker/rescuegrid/scripts/nas_auto_deploy.sh
+   chmod +x /volume1/docker/rescuegrid/scripts/notify_deploy.sh
+   ```
+
+2. Initialiser le marqueur avec le commit actuellement déployé, pour éviter
+   un premier déclenchement inutile au prochain run :
+
+   ```bash
+   cd /volume1/docker/rescuegrid
+   git rev-parse HEAD > .last_deployed_commit
+   ```
+
+3. DSM → Panneau de configuration → Planificateur de tâches → Créer →
+   **Tâche déclenchée** → Script défini par l'utilisateur :
+   - Compte utilisateur : `root` (nécessaire pour appeler `docker`).
+   - Calendrier : répéter toutes les **15 minutes**, tous les jours.
+   - Tâche → Exécuter la commande :
+
+     ```
+     bash /volume1/docker/rescuegrid/scripts/nas_auto_deploy.sh
+     ```
+
+4. Vérifier après le premier déclenchement : le fichier
+   `/volume1/docker/rescuegrid/logs/auto_deploy.log` doit contenir
+   `Déjà à jour (...)`. Pour tester réellement le pipeline, faites un petit
+   commit sur `main` depuis votre poste, poussez-le, puis attendez le prochain
+   run (ou déclenchez la tâche manuellement depuis DSM avec le bouton
+   « Exécuter ») et surveillez le log + la notification ntfy.
+
+À partir de là, un simple `git push` vers `main` suffit : le NAS se met à
+jour de lui-même dans les ~15 minutes qui suivent, sans connexion SSH.
+
 ## Hors périmètre (pour l'instant)
 
 - Intégration applicative MinIO/S3 (stockage objet) dans le backend.

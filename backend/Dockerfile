@@ -13,10 +13,24 @@ WORKDIR /app
 # xhtml2pdf (pip) en tout dernier recours. Le paquet officiel wkhtmltopdf
 # n'étant publié que pour des versions Debian figées, l'image de base est
 # épinglée à bookworm pour rester compatible.
+# Le dépôt Debian bookworm ne fournit que postgresql-client 15, alors que la
+# base de données de production (docker-compose.synology.yml, image
+# `postgres:16-alpine`) est en version majeure 16. `pg_dump` refuse par
+# sécurité de sauvegarder un serveur plus récent que lui ("aborting because of
+# server version mismatch") : toute sauvegarde planifiée échouait silencieusement
+# en production. On installe donc `postgresql-client-16` depuis le dépôt
+# officiel PGDG plutôt que le paquet générique du dépôt Debian.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        curl postgresql-client chromium \
+        curl gnupg ca-certificates chromium \
         fonts-liberation fonts-dejavu-core fonts-noto-core \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+        https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
     && curl -fsSL -o /tmp/wkhtmltox.deb \
         https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb \
     && apt-get install -y --no-install-recommends /tmp/wkhtmltox.deb \

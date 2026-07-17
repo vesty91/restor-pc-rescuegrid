@@ -116,6 +116,86 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+# ── Double authentification (TOTP) — obligatoire pour le role admin ──────────
+# Cookie temporaire distinct de la session (access_token) : porte uniquement
+# l'identité en cours de vérification, jamais un accès à l'application. Un
+# secret TOTP pas encore confirmé (enrôlement en cours) transite dans ce cookie
+# plutôt qu'en base, pour ne jamais persister de secret 2FA non validé par le
+# propriétaire du compte.
+TWO_FA_PENDING_EXPIRE_MINUTES = 10
+
+
+def create_2fa_pending_token(typ: str, username: str, secret: str | None = None) -> str:
+    payload: dict = {"sub": username, "typ": typ}
+    if secret:
+        payload["secret"] = secret
+    expire = datetime.now(timezone.utc) + timedelta(minutes=TWO_FA_PENDING_EXPIRE_MINUTES)
+    payload["exp"] = expire
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_2fa_pending_token(token: str, expected_typ: str) -> Optional[dict]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("typ") != expected_typ:
+        return None
+    return payload
+
+
+def generate_totp_secret() -> str:
+    import pyotp
+    return pyotp.random_base32()
+
+
+def totp_provisioning_uri(username: str, secret: str) -> str:
+    import pyotp
+    return pyotp.TOTP(secret).provisioning_uri(name=username, issuer_name="Restor-PC RescueGrid")
+
+
+def verify_totp_code(secret: str, code: str) -> bool:
+    import pyotp
+    code = (code or "").strip().replace(" ", "")
+    if not code.isdigit():
+        return False
+    return pyotp.TOTP(secret).verify(code, valid_window=1)
+
+
+def generate_recovery_codes(count: int = 8) -> list[str]:
+    """Codes de secours a usage unique (perte du telephone/app TOTP), au format
+    lisible XXXX-XXXX. Retournes en clair une seule fois a l'ecran ; seul leur
+    hachage bcrypt est conserve (voir hash_recovery_codes)."""
+    return [f"{secrets.token_hex(4)[:4]}-{secrets.token_hex(4)[:4]}".upper() for _ in range(count)]
+
+
+def hash_recovery_codes(codes: list[str]) -> str:
+    import json
+    return json.dumps([hash_password(c) for c in codes])
+
+
+def consume_recovery_code(user: User, code: str) -> bool:
+    """Verifie un code de secours et le retire (usage unique) de la liste
+    stockee sur l'utilisateur si valide. L'appelant doit committer la session
+    apres appel pour que la consommation soit persistee."""
+    import json
+    if not user.totp_recovery_codes:
+        return False
+    code = (code or "").strip().upper()
+    if not code:
+        return False
+    try:
+        hashed_codes: list[str] = json.loads(user.totp_recovery_codes)
+    except (ValueError, TypeError):
+        return False
+    for hashed in hashed_codes:
+        if verify_password(code, hashed):
+            hashed_codes.remove(hashed)
+            user.totp_recovery_codes = json.dumps(hashed_codes)
+            return True
+    return False
+
+
 def decode_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])

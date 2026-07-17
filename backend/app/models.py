@@ -53,6 +53,15 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    # Double authentification (TOTP, compatible Google Authenticator/Authy) —
+    # obligatoire pour le role admin, voir auth.py et main.py (routes /2fa/*).
+    # totp_secret n'est renseigne qu'une fois l'enrolement confirme (un secret
+    # genere mais jamais confirme reste dans le cookie temporaire de session,
+    # jamais en base) ; totp_recovery_codes est une liste JSON de hachages
+    # bcrypt a usage unique (perte du telephone).
+    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_recovery_codes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
 
 class Part(Base):

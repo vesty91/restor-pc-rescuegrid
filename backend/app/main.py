@@ -75,6 +75,27 @@ ACCOUNT_LOCKOUT_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
 ACCOUNT_LOCKOUT_COUNT = int(os.getenv("ACCOUNT_LOCKOUT_COUNT", "5"))
 ACCOUNT_LOCKOUT_WINDOW_SECONDS = int(os.getenv("ACCOUNT_LOCKOUT_WINDOW_SECONDS", "900"))
 
+# Anti brute-force sur les codes TOTP à 6 chiffres (espace bien plus restreint
+# qu'un mot de passe) — même principe que ACCOUNT_LOCKOUT_ATTEMPTS ci-dessus,
+# indexé par identifiant. Voir POST /2fa/verify et POST /2fa/setup.
+TWO_FA_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
+TWO_FA_ATTEMPT_COUNT = int(os.getenv("TWO_FA_ATTEMPT_COUNT", "8"))
+TWO_FA_ATTEMPT_WINDOW_SECONDS = int(os.getenv("TWO_FA_ATTEMPT_WINDOW_SECONDS", "300"))
+
+
+def _two_fa_rate_limited(username_key: str) -> bool:
+    import time
+    now = time.time()
+    attempts = TWO_FA_ATTEMPTS[username_key]
+    while attempts and now - attempts[0] > TWO_FA_ATTEMPT_WINDOW_SECONDS:
+        attempts.popleft()
+    return len(attempts) >= TWO_FA_ATTEMPT_COUNT
+
+
+def _record_two_fa_attempt(username_key: str) -> None:
+    import time
+    TWO_FA_ATTEMPTS[username_key].append(time.time())
+
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -603,10 +624,22 @@ async def login_post(
 
     LOGIN_ATTEMPTS.pop(client_ip, None)
     ACCOUNT_LOCKOUT_ATTEMPTS.pop(username_key, None)
-    logger.info("Connexion réussie : %s depuis %s", username, client_ip)
+    logger.info("Mot de passe validé : %s depuis %s", username, client_ip)
+    from .auth import COOKIE_SECURE, create_2fa_pending_token
+
+    # 2FA obligatoire pour le rôle admin uniquement (voir routes /2fa/*
+    # ci-dessous) : le mot de passe seul ne suffit jamais à ouvrir une session
+    # pour ce rôle, qu'il soit déjà enrôlé (redirection vers /2fa/verify) ou
+    # pas encore (enrôlement forcé via /2fa/setup avant tout accès).
+    if user.role == "admin":
+        typ = "staff_2fa_verify" if user.totp_enabled else "staff_2fa_setup"
+        pending = create_2fa_pending_token(typ, user.username)
+        response = RedirectResponse("/2fa/verify" if user.totp_enabled else "/2fa/setup", status_code=303)
+        response.set_cookie("pending_2fa", pending, httponly=True, samesite="lax", secure=COOKIE_SECURE)
+        return response
+
     token = create_access_token({"sub": user.username})
     response = RedirectResponse("/", status_code=303)
-    from .auth import COOKIE_SECURE
     response.set_cookie("access_token", token, httponly=True, samesite="lax", secure=COOKIE_SECURE)
     return response
 
@@ -615,7 +648,174 @@ async def login_post(
 def logout():
     response = RedirectResponse("/login", status_code=303)
     response.delete_cookie("access_token")
+    response.delete_cookie("pending_2fa")
     return response
+
+
+def _finalize_login(username: str) -> RedirectResponse:
+    from .auth import COOKIE_SECURE, create_access_token
+    token = create_access_token({"sub": username})
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie("access_token", token, httponly=True, samesite="lax", secure=COOKIE_SECURE)
+    response.delete_cookie("pending_2fa")
+    return response
+
+
+@app.get("/2fa/setup", response_class=HTMLResponse)
+def two_fa_setup_page(request: Request, session: Session = Depends(get_session)):
+    from .auth import decode_2fa_pending_token, generate_totp_secret, totp_provisioning_uri
+
+    pending_token = request.cookies.get("pending_2fa", "")
+    payload = decode_2fa_pending_token(pending_token, "staff_2fa_setup")
+    if not payload:
+        return RedirectResponse("/login", status_code=303)
+    username = payload["sub"]
+    secret = payload.get("secret") or generate_totp_secret()
+
+    # Génère le secret une seule fois pour cet enrôlement puis le fige dans le
+    # cookie temporaire (jamais en base tant que le code n'est pas confirmé) —
+    # sans quoi rafraîchir la page changerait le QR code affiché à chaque fois.
+    if not payload.get("secret"):
+        from .auth import create_2fa_pending_token
+        new_pending = create_2fa_pending_token("staff_2fa_setup", username, secret=secret)
+    else:
+        new_pending = pending_token
+
+    qr_data_uri = _totp_qr_data_uri(totp_provisioning_uri(username, secret))
+    response = templates.TemplateResponse(
+        "2fa_setup.html",
+        {"request": request, "secret": secret, "qr_data_uri": qr_data_uri, "error": None},
+    )
+    from .auth import COOKIE_SECURE
+    response.set_cookie("pending_2fa", new_pending, httponly=True, samesite="lax", secure=COOKIE_SECURE)
+    return response
+
+
+def _totp_qr_data_uri(uri: str) -> str:
+    import base64
+    import io
+    import qrcode
+
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+@app.post("/2fa/setup", response_class=HTMLResponse)
+async def two_fa_setup_confirm(request: Request, session: Session = Depends(get_session)):
+    from .auth import (
+        decode_2fa_pending_token, generate_recovery_codes, hash_recovery_codes,
+        log_activity, totp_provisioning_uri, verify_totp_code,
+    )
+
+    pending_token = request.cookies.get("pending_2fa", "")
+    payload = decode_2fa_pending_token(pending_token, "staff_2fa_setup")
+    if not payload or not payload.get("secret"):
+        return RedirectResponse("/login", status_code=303)
+    username = payload["sub"]
+    secret = payload["secret"]
+
+    if _two_fa_rate_limited(username.lower()):
+        return templates.TemplateResponse(
+            "2fa_setup.html",
+            {"request": request, "secret": secret, "qr_data_uri": _totp_qr_data_uri(totp_provisioning_uri(username, secret)),
+             "error": "Trop de tentatives. Réessayez dans quelques minutes."},
+            status_code=429,
+        )
+
+    form = await request.form()
+    code = str(form.get("code", ""))
+    if not verify_totp_code(secret, code):
+        _record_two_fa_attempt(username.lower())
+        return templates.TemplateResponse(
+            "2fa_setup.html",
+            {"request": request, "secret": secret, "qr_data_uri": _totp_qr_data_uri(totp_provisioning_uri(username, secret)),
+             "error": "Code invalide — vérifiez l'heure de votre téléphone et réessayez."},
+        )
+
+    user = session.scalars(select(User).where(User.username == username)).first()
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    recovery_codes = generate_recovery_codes()
+    user.totp_secret = secret
+    user.totp_enabled = True
+    user.totp_recovery_codes = hash_recovery_codes(recovery_codes)
+    log_activity(session, user, "2fa.enable")
+    session.commit()
+
+    return templates.TemplateResponse(
+        "2fa_recovery_codes.html",
+        {"request": request, "recovery_codes": recovery_codes},
+    )
+
+
+@app.post("/2fa/setup/continue")
+def two_fa_setup_continue(request: Request):
+    """Après affichage unique des codes de secours (2fa_recovery_codes.html),
+    ouvre enfin la session — voir _finalize_login."""
+    from .auth import decode_token
+    token = request.cookies.get("access_token", "")
+    payload = decode_token(token) if token else None
+    if payload:
+        return RedirectResponse("/", status_code=303)
+    pending = request.cookies.get("pending_2fa", "")
+    from .auth import decode_2fa_pending_token
+    payload = decode_2fa_pending_token(pending, "staff_2fa_setup")
+    if not payload:
+        return RedirectResponse("/login", status_code=303)
+    return _finalize_login(payload["sub"])
+
+
+@app.get("/2fa/verify", response_class=HTMLResponse)
+def two_fa_verify_page(request: Request):
+    from .auth import decode_2fa_pending_token
+    payload = decode_2fa_pending_token(request.cookies.get("pending_2fa", ""), "staff_2fa_verify")
+    if not payload:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("2fa_verify.html", {"request": request, "error": None})
+
+
+@app.post("/2fa/verify", response_class=HTMLResponse)
+async def two_fa_verify_confirm(request: Request, session: Session = Depends(get_session)):
+    from .auth import consume_recovery_code, decode_2fa_pending_token, log_activity, verify_totp_code
+
+    payload = decode_2fa_pending_token(request.cookies.get("pending_2fa", ""), "staff_2fa_verify")
+    if not payload:
+        return RedirectResponse("/login", status_code=303)
+    username = payload["sub"]
+    username_key = username.lower()
+
+    if _two_fa_rate_limited(username_key):
+        return templates.TemplateResponse(
+            "2fa_verify.html",
+            {"request": request, "error": "Trop de tentatives. Réessayez dans quelques minutes."},
+            status_code=429,
+        )
+
+    user = session.scalars(select(User).where(User.username == username)).first()
+    if not user or not user.totp_enabled or not user.totp_secret:
+        return RedirectResponse("/login", status_code=303)
+
+    form = await request.form()
+    code = str(form.get("code", ""))
+    valid = verify_totp_code(user.totp_secret, code)
+    if not valid and consume_recovery_code(user, code):
+        valid = True
+        log_activity(session, user, "2fa.recovery_code_used")
+        session.commit()
+        logger.warning("Code de secours 2FA utilisé pour le compte %s", username)
+
+    if not valid:
+        _record_two_fa_attempt(username_key)
+        logger.warning("Code 2FA invalide pour %s", username)
+        return templates.TemplateResponse(
+            "2fa_verify.html", {"request": request, "error": "Code invalide."},
+        )
+
+    TWO_FA_ATTEMPTS.pop(username_key, None)
+    logger.info("Connexion 2FA réussie : %s", username)
+    return _finalize_login(username)
 
 
 @app.get("/", response_class=HTMLResponse)

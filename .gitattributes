@@ -1,0 +1,4 @@
+# Les scripts shell doivent toujours garder des fins de ligne Unix (LF),
+# même clonés/édités depuis un poste Windows — sinon ils échouent au premier
+# `bash script.sh` sur le NAS Synology (erreur "$'\r': command not found").
+*.sh text eol=lf
