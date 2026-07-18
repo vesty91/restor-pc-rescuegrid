@@ -4,7 +4,7 @@
 .DESCRIPTION
     Verifie Python, cree un venv dans backend\.venv et installe les packages pip.
 .NOTES
-    Version : 8.1 tools
+    Version : 12.5.2
 #>
 
 $ErrorActionPreference = "Stop"

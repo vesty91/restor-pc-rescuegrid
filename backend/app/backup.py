@@ -1,5 +1,5 @@
 """
-backup.py — Restor-PC RescueGrid v12.3
+backup.py — Restor-PC RescueGrid v12.5.2
 ---------------------------------------
 Sauvegarde planifiée de la base de données avec rotation.
 

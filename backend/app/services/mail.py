@@ -6,18 +6,10 @@ import os
 import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr
-from pathlib import Path
-
-from dotenv import load_dotenv
 
 from ..helpers import render_document_pdf
 
 logger = logging.getLogger(__name__)
-
-_BACKEND_DIR = Path(__file__).resolve().parents[2]
-_PROJECT_DIR = _BACKEND_DIR.parent
-load_dotenv(_PROJECT_DIR / ".env", override=False)
-load_dotenv(_BACKEND_DIR / ".env", override=True)
 
 
 def smtp_config() -> dict:

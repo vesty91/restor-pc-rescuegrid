@@ -15,6 +15,9 @@
 - **Versions affichées** harmonisées sur 12.5.2 (README, docs, compose).
 - **`server_default`** alignés sur les migrations Alembic ; init SQLite
   via `alembic upgrade head` (plus de `create_all` + stamp sur BDD vierge).
+- **`.env` chargé tôt** dans `app/__init__.py` (avant `database`/`auth`/
+  `backup`), pour que `DATABASE_URL`, `SECRET_KEY`, etc. soient pris en compte
+  en install Windows locale.
 
 ## v12.5.1 — Durcissement technique (priorités revue qualité)
 
