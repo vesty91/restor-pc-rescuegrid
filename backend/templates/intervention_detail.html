@@ -24,8 +24,32 @@
 {% block content %}
 <div class="page-header">
   <h1>Intervention #{{ intervention.id }}</h1>
-  <p>{{ intervention.title }} · {{ intervention.client.name if intervention.client else 'Client inconnu' }} · <span class="pill">{{ intervention.status }}</span></p>
+  <p>{{ intervention.title }} · {{ intervention.client.name if intervention.client else 'Client inconnu' }} · <span class="pill">{{ intervention.status|status_fr }}</span></p>
 </div>
+
+{% if request.query_params.get('mail') %}
+<div class="notice {% if request.query_params.get('mail') == 'sent' %}success{% else %}error{% endif %}">
+  {% if request.query_params.get('mail') == 'sent' %}✓ Email client envoyé.
+  {% elif request.query_params.get('mail') == 'smtp_not_configured' %}⚠ SMTP non configuré.
+  {% else %}⚠ Email non envoyé ({{ request.query_params.get('mail') }}).
+  {% endif %}
+</div>
+{% endif %}
+
+{% if intervention.client %}
+<div class="card" style="margin-bottom:16px;padding:14px 18px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+  <a class="btn btn-sm" href="/client/{{ intervention.client.id }}">Fiche client</a>
+  {% if intervention.client.email %}
+  <form method="post" action="/client/{{ intervention.client.id }}/portal/enable" style="display:inline">
+    <input type="hidden" name="email" value="{{ intervention.client.email }}">
+    <button class="btn btn-secondary btn-sm" type="submit">Activer l'espace client</button>
+  </form>
+  <span class="hint">{{ intervention.client.email }}</span>
+  {% else %}
+  <span class="hint">Ajoute un email sur la fiche client pour activer l'espace / envoyer des mails.</span>
+  {% endif %}
+</div>
+{% endif %}
 
 <!-- KPIs -->
 <div class="kpi-grid" style="margin-bottom:18px">
@@ -93,7 +117,7 @@
           <tr>
             <td><strong>{{ q.quote_number }}</strong></td>
             <td>{{ "%.2f"|format(q.total) }} €</td>
-            <td><span class="pill {% if q.status == 'accepted' %}accepted{% elif q.status == 'draft' %}draft{% elif q.status == 'cancelled' %}cancelled{% endif %}">{% if q.status == 'draft' %}Brouillon{% elif q.status == 'sent' %}Envoyé{% elif q.status == 'accepted' %}Accepté{% elif q.status == 'cancelled' %}Refusé{% else %}{{ q.status }}{% endif %}</span></td>
+            <td><span class="pill {% if q.status == 'accepted' %}accepted{% elif q.status == 'draft' %}draft{% elif q.status == 'cancelled' %}cancelled{% endif %}">{{ q.status|status_fr }}</span></td>
             <td class="actions-cell">
               <a href="/quote/{{ q.id }}/pdf" target="_blank" class="btn btn-secondary btn-sm">PDF</a>
               <form action="/quote/{{ q.id }}/convert" method="post"><button class="btn btn-secondary btn-sm">→ Facture</button></form>
@@ -114,7 +138,7 @@
           <tr>
             <td><strong>{{ inv.invoice_number }}</strong></td>
             <td>{{ "%.2f"|format(inv.total) }} €</td>
-            <td><span class="pill {% if inv.status == 'paid' %}paid{% elif inv.status == 'draft' %}draft{% elif inv.status == 'cancelled' %}cancelled{% elif inv.status == 'issued' %}issued{% endif %}">{% if inv.status == 'draft' %}Brouillon{% elif inv.status == 'issued' %}Émise{% elif inv.status == 'paid' %}Payée{% elif inv.status == 'cancelled' %}Annulée{% else %}{{ inv.status }}{% endif %}</span></td>
+            <td><span class="pill {% if inv.status == 'paid' %}paid{% elif inv.status == 'draft' %}draft{% elif inv.status == 'cancelled' %}cancelled{% elif inv.status == 'issued' %}issued{% endif %}">{{ inv.status|status_fr }}</span></td>
             <td class="actions-cell">
               <a href="/invoice/{{ inv.id }}/pdf" target="_blank" class="btn btn-secondary btn-sm">PDF</a>
               {% if inv.status != 'paid' %}<form action="/invoice/{{ inv.id }}/status" method="post"><input type="hidden" name="status" value="paid"><input type="hidden" name="payment_method" value="cash"><button class="btn-sm">✓</button></form>{% endif %}

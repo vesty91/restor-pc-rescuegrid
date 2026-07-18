@@ -51,9 +51,16 @@ window.open(document.getElementById('stripe-link-open').href, '_blank', 'noopene
         <select name="intervention_id" required>
           {% for i in interventions %}<option value="{{ i.id }}">#{{ i.id }} — {{ i.client.name if i.client else '?' }} — {{ i.machine_name or i.title }}</option>{% endfor %}
         </select>
+        <label>Modèle de prestation</label>
+        <select name="service_template" id="inv-template">
+          <option value="">— Personnalisé —</option>
+          {% for t in service_templates or [] %}
+          <option value="{{ t.id }}" data-amount="{{ t.amount }}" data-desc="{{ t.description }}">{{ t.label }}</option>
+          {% endfor %}
+        </select>
         <label>Désignation client</label>
-        <input name="notes" value="Diagnostic atelier, contrôle système et intervention Restor-PC.">
-        <label>Montant (€)</label><input name="amount" type="number" step="0.01" value="{% if interventions %}{{ '%.2f'|format(default_billing_amount(interventions[0])) }}{% else %}60.00{% endif %}" required>
+        <input name="notes" id="inv-notes" value="Diagnostic atelier, contrôle système et intervention Restor-PC.">
+        <label>Montant (€)</label><input name="amount" id="inv-amount" type="number" step="0.01" value="{% if interventions %}{{ '%.2f'|format(default_billing_amount(interventions[0])) }}{% else %}60.00{% endif %}" required>
         <div class="grid2">
           <div><label>Échéance</label><input name="due_date" type="date" value="{{ today_date() if today_date else '' }}"></div>
           <div><label>Statut</label>
@@ -65,8 +72,20 @@ window.open(document.getElementById('stripe-link-open').href, '_blank', 'noopene
             </select>
           </div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-weight:600">
+          <input type="checkbox" name="send_email" value="on" style="width:auto">
+          Envoyer la facture par email au client
+        </label>
         <button style="margin-top:16px">Créer la facture</button>
       </form>
+      <script>
+        document.getElementById('inv-template')?.addEventListener('change', function () {
+          const opt = this.selectedOptions[0];
+          if (!opt || !opt.value) return;
+          document.getElementById('inv-amount').value = parseFloat(opt.dataset.amount).toFixed(2);
+          document.getElementById('inv-notes').value = opt.dataset.desc || '';
+        });
+      </script>
     </div>
   </div>
 
@@ -83,9 +102,7 @@ window.open(document.getElementById('stripe-link-open').href, '_blank', 'noopene
           <td>{% if inv.client %}<a href="/client/{{ inv.client.id }}">{{ inv.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td><strong>{{ "%.2f"|format(inv.total) }} €</strong></td>
           <td>
-            <span class="pill {{ inv.status }}">
-              {% if inv.status == 'draft' %}Brouillon{% elif inv.status == 'issued' %}Émise{% elif inv.status == 'paid' %}Payée{% elif inv.status == 'cancelled' %}Annulée{% else %}{{ inv.status }}{% endif %}
-            </span>
+            <span class="pill {{ inv.status }}">{{ inv.status|status_fr }}</span>
             {% if inv.payment_method %}<span class="hint"> · {{ inv.payment_method }}</span>{% endif %}
           </td>
           <td>

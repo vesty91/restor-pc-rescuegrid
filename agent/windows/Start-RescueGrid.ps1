@@ -84,20 +84,26 @@ function Find-OfflineWindows {
     return $null
 }
 
+function Test-IsWinPE {
+    return ($env:SystemDrive -eq 'X:') -or (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Control\MiniNT')
+}
+
 function Find-AllWindowsInstallations {
-    $windowsList = @()
+    # PSCustomObject (pas [ordered]) pour éviter que PowerShell énumère les clés
+    # au return et affiche 4 lignes vides pour 1 Windows.
+    $windowsList = [System.Collections.Generic.List[object]]::new()
     Get-Volume | Where-Object { $_.DriveLetter -and $_.DriveLetter -ne 'X' } | ForEach-Object {
         $wl = "$($_.DriveLetter):\Windows"
         if (Test-Path "$wl\System32") {
-            $windowsList += [ordered]@{
-                drive = "$($_.DriveLetter):"
+            $windowsList.Add([pscustomobject]@{
+                drive        = "$($_.DriveLetter):"
                 windows_path = $wl
-                label = $_.FileSystemLabel
-                size = "$([math]::Round($_.Size / 1GB, 2)) GB"
-            }
+                label        = $_.FileSystemLabel
+                size         = "$([math]::Round($_.Size / 1GB, 2)) GB"
+            }) | Out-Null
         }
     }
-    return $windowsList
+    return , @($windowsList.ToArray())
 }
 
 function Show-Menu {
@@ -118,68 +124,68 @@ if (-not (Test-Path -LiteralPath $RescueGridAgent)) {
     Write-Host "[INFO] Le diagnostic avance utilisera l'agent s'il est trouvé." -ForegroundColor Gray
 }
 
-# Menu principal
-do {
-    Show-Menu "Menu Principal"
-    
-    $offlineWindows = Find-AllWindowsInstallations
-    $volumes = Get-WinPEVolumes
-    
-    Write-Host " Systeme actuel : WinPE" -ForegroundColor Cyan
-    if ($offlineWindows.Count -gt 0) {
-        Write-Host " Windows trouve(s) :" -ForegroundColor Green
-        $i = 1
-        foreach ($w in $offlineWindows) {
-            Write-Host "   $i. $($w.windows_path) ($($w.label))" -ForegroundColor Gray
-            $i++
+# ===== FONCTIONS =====
+
+function Read-ClientFicheInfo {
+    <#
+      Saisie fiche client après le nom : email / tel / adresse / contact.
+      Entrée = champ ignoré. Si email renseigné, propose l'envoi du rapport.
+    #>
+    Write-Host ""
+    Write-Host "--- Fiche client (Entree = passer) ---" -ForegroundColor Cyan
+    $name = Read-Host "Nom du client"
+    while ([string]::IsNullOrWhiteSpace($name)) {
+        Write-Host "Le nom est obligatoire." -ForegroundColor Yellow
+        $name = Read-Host "Nom du client"
+    }
+    $email = (Read-Host "Email (recommande — devis, factures, RDV)").Trim()
+    if (-not $email) {
+        Write-Host "[ATTENTION] Sans email : pas d'envoi auto (rapport, RDV, devis)." -ForegroundColor Yellow
+        $cont = Read-Host "Continuer sans email ? (O/N)"
+        if ($cont -ne "O" -and $cont -ne "o") {
+            $email = (Read-Host "Email").Trim()
         }
     }
-    else {
-        Write-Host " Aucun Windows detecte" -ForegroundColor Yellow
+    $phone = (Read-Host "Telephone").Trim()
+    $address = (Read-Host "Adresse").Trim()
+    $contact = (Read-Host "Contact (prenom/nom interlocuteur)").Trim()
+    $sendReport = $false
+    if ($email) {
+        $sendAns = Read-Host "Envoyer le rapport par mail a la fin ? (O/N)"
+        $sendReport = ($sendAns -eq "O" -or $sendAns -eq "o")
     }
-    
-    Write-Host ""
-    Write-Host " Volumes disponibles :" -ForegroundColor Cyan
-    foreach ($v in $volumes) {
-        Write-Host "   $($v.DriveLetter): $($v.FileSystemLabel) - $([math]::Round($v.SizeRemaining / 1GB, 0))/ $([math]::Round($v.Size / 1GB, 0)) GB" -ForegroundColor Gray
+    return [pscustomobject]@{
+        Name       = $name.Trim()
+        Email      = $email
+        Phone      = $phone
+        Address    = $address
+        Contact    = $contact
+        SendReport = $sendReport
     }
-    
-    Write-Host ""
-    Write-Host " 1. Diagnostic complet" -ForegroundColor White
-    Write-Host " 2. Sauvegarde utilisateur" -ForegroundColor White
-    Write-Host " 3. Analyse SMART disques" -ForegroundColor White
-    Write-Host " 4. Reparation boot Windows" -ForegroundColor White
-    Write-Host " 5. Export rapport seul" -ForegroundColor White
-    Write-Host " 6. Reinstallation (preparation)" -ForegroundColor White
-    Write-Host " 7. Analyser Windows hors ligne" -ForegroundColor White
-    Write-Host " 8. Verifier l'integrite systeme" -ForegroundColor White
-    Write-Host " 9. Quitter" -ForegroundColor Red
-    Write-Host ""
-    $choice = Read-Host "Votre choix (1-9)"
-    
-    switch ($choice) {
-        "1" { Invoke-Diagnostic }
-        "2" { Invoke-Backup }
-        "3" { Invoke-SMART }
-        "4" { Invoke-BootRepair }
-        "5" { Invoke-Report }
-        "6" { Invoke-Reinstall }
-        "7" { Invoke-Offline }
-        "8" { Invoke-SystemCheck }
-        "9" { Write-Host "Au revoir." -ForegroundColor Cyan; break }
-    }
-} while ($choice -ne "9")
+}
 
-# ===== FONCTIONS =====
+function Add-ClientFicheParams {
+    param(
+        [Parameter(Mandatory)][object]$Fiche,
+        [Parameter(Mandatory)][System.Collections.IList]$Params
+    )
+    $Params.Add("-ClientName") | Out-Null
+    $Params.Add($Fiche.Name) | Out-Null
+    if ($Fiche.Email) { $Params.Add("-ClientEmail") | Out-Null; $Params.Add($Fiche.Email) | Out-Null }
+    if ($Fiche.Phone) { $Params.Add("-ClientPhone") | Out-Null; $Params.Add($Fiche.Phone) | Out-Null }
+    if ($Fiche.Address) { $Params.Add("-ClientAddress") | Out-Null; $Params.Add($Fiche.Address) | Out-Null }
+    if ($Fiche.Contact) { $Params.Add("-ClientContact") | Out-Null; $Params.Add($Fiche.Contact) | Out-Null }
+    if ($Fiche.SendReport) { $Params.Add("-SendReportEmail") | Out-Null }
+}
 
 function Invoke-Diagnostic {
     Show-Menu "Diagnostic complet"
     
-    $clientName = Read-Host "Nom du client"
+    $fiche = Read-ClientFicheInfo
     
     # Chercher Windows offline
     $offlinePath = ""
-    $windowsList = Find-AllWindowsInstallations
+    $windowsList = @(Find-AllWindowsInstallations)
     if ($windowsList.Count -eq 1) {
         $offlinePath = $windowsList[0].windows_path
         Write-Host "[INFO] Windows detecte : $offlinePath" -ForegroundColor Green
@@ -194,16 +200,20 @@ function Invoke-Diagnostic {
     }
     
     if (Test-Path -LiteralPath $RescueGridAgent) {
-        $params = @(
-            "-ClientName", $clientName,
+        $params = [System.Collections.ArrayList]@(
             "-BackupRoot", $BackupRoot,
             "-CreateZip"
         )
-        if ($offlinePath) {
-            $params += "-OfflineWindowsPath", $offlinePath
+        Add-ClientFicheParams -Fiche $fiche -Params $params
+        # Hors WinPE : ne pas forcer OfflineWindowsPath sur le Windows en cours
+        # (sinon inventaire "offline" au lieu du diagnostic live).
+        $liveWindows = Join-Path $env:SystemDrive "Windows"
+        if ($offlinePath -and ((Test-IsWinPE) -or ($offlinePath -ne $liveWindows))) {
+            $params.Add("-OfflineWindowsPath") | Out-Null
+            $params.Add($offlinePath) | Out-Null
         }
-        if ($DashboardUploadUrl) { $params += "-DashboardUploadUrl", $DashboardUploadUrl }
-        if ($UploadApiKey) { $params += "-UploadApiKey", $UploadApiKey }
+        if ($DashboardUploadUrl) { $params.Add("-DashboardUploadUrl") | Out-Null; $params.Add($DashboardUploadUrl) | Out-Null }
+        if ($UploadApiKey) { $params.Add("-UploadApiKey") | Out-Null; $params.Add($UploadApiKey) | Out-Null }
         powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
     }
     else {
@@ -220,10 +230,10 @@ function Invoke-Diagnostic {
 function Invoke-Backup {
     Show-Menu "Sauvegarde utilisateur"
     
-    $clientName = Read-Host "Nom du client"
+    $fiche = Read-ClientFicheInfo
     
     # Chercher les profils utilisateurs
-    $windowsList = Find-AllWindowsInstallations
+    $windowsList = @(Find-AllWindowsInstallations)
     $profilesFound = @()
     
     foreach ($w in $windowsList) {
@@ -258,17 +268,17 @@ function Invoke-Backup {
     $essential = Read-Host
     
     if (Test-Path -LiteralPath $RescueGridAgent) {
-        $params = @(
-            "-ClientName", $clientName,
+        $params = [System.Collections.ArrayList]@(
             "-BackupRoot", $BackupRoot,
             "-UserProfilePath", $profilePath,
             "-CreateZip"
         )
+        Add-ClientFicheParams -Fiche $fiche -Params $params
         if ($essential -eq "O" -or $essential -eq "o") {
-            $params += "-BackupEssentialFoldersOnly"
+            $params.Add("-BackupEssentialFoldersOnly") | Out-Null
         }
-        if ($DashboardUploadUrl) { $params += "-DashboardUploadUrl", $DashboardUploadUrl }
-        if ($UploadApiKey) { $params += "-UploadApiKey", $UploadApiKey }
+        if ($DashboardUploadUrl) { $params.Add("-DashboardUploadUrl") | Out-Null; $params.Add($DashboardUploadUrl) | Out-Null }
+        if ($UploadApiKey) { $params.Add("-UploadApiKey") | Out-Null; $params.Add($UploadApiKey) | Out-Null }
         powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
     }
     else {
@@ -347,12 +357,13 @@ function Invoke-BootRepair {
 function Invoke-Report {
     Show-Menu "Export rapport seul"
     
-    $clientName = Read-Host "Nom du client"
+    $fiche = Read-ClientFicheInfo
     
     if (Test-Path -LiteralPath $RescueGridAgent) {
-        $params = @("-ClientName", $clientName, "-BackupRoot", $BackupRoot)
-        if ($DashboardUploadUrl) { $params += "-DashboardUploadUrl", $DashboardUploadUrl }
-        if ($UploadApiKey) { $params += "-UploadApiKey", $UploadApiKey }
+        $params = [System.Collections.ArrayList]@("-BackupRoot", $BackupRoot, "-CreateZip")
+        Add-ClientFicheParams -Fiche $fiche -Params $params
+        if ($DashboardUploadUrl) { $params.Add("-DashboardUploadUrl") | Out-Null; $params.Add($DashboardUploadUrl) | Out-Null }
+        if ($UploadApiKey) { $params.Add("-UploadApiKey") | Out-Null; $params.Add($UploadApiKey) | Out-Null }
         powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
     }
     else {
@@ -385,8 +396,8 @@ function Invoke-Reinstall {
 function Invoke-Offline {
     Show-Menu "Analyse Windows hors ligne"
     
-    $clientName = Read-Host "Nom du client"
-    $windowsList = Find-AllWindowsInstallations
+    $fiche = Read-ClientFicheInfo
+    $windowsList = @(Find-AllWindowsInstallations)
     
     if ($windowsList.Count -eq 0) {
         Write-Host "[ERREUR] Aucune installation Windows trouvee." -ForegroundColor Red
@@ -402,14 +413,19 @@ function Invoke-Offline {
     $offlinePath = $windowsList[[int]$idx - 1].windows_path
     
     if (Test-Path -LiteralPath $RescueGridAgent) {
-        $params = @("-ClientName", $clientName, "-BackupRoot", $BackupRoot, "-OfflineWindowsPath", $offlinePath, "-CreateZip")
-        if ($DashboardUploadUrl) { $params += "-DashboardUploadUrl", $DashboardUploadUrl }
-        if ($UploadApiKey) { $params += "-UploadApiKey", $UploadApiKey }
+        $params = [System.Collections.ArrayList]@(
+            "-BackupRoot", $BackupRoot,
+            "-OfflineWindowsPath", $offlinePath,
+            "-CreateZip"
+        )
+        Add-ClientFicheParams -Fiche $fiche -Params $params
+        if ($DashboardUploadUrl) { $params.Add("-DashboardUploadUrl") | Out-Null; $params.Add($DashboardUploadUrl) | Out-Null }
+        if ($UploadApiKey) { $params.Add("-UploadApiKey") | Out-Null; $params.Add($UploadApiKey) | Out-Null }
         powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
     }
     else {
         Write-Host "[MODE DEGRADE] Copie manuelle des artefacts..." -ForegroundColor Yellow
-        $outputDir = "$BackupRoot\Offline_$clientName"
+        $outputDir = "$BackupRoot\Offline_$($fiche.Name)"
         New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
         
         # Copie ruches
@@ -489,3 +505,68 @@ function Invoke-SystemCheck {
     
     Pause
 }
+
+# Menu principal
+do {
+    Show-Menu "Menu Principal"
+    
+    $offlineWindows = Find-AllWindowsInstallations
+    $volumes = Get-WinPEVolumes
+    
+    if (Test-IsWinPE) {
+        Write-Host " Systeme actuel : WinPE" -ForegroundColor Cyan
+    } else {
+        Write-Host " Systeme actuel : Windows (live)" -ForegroundColor Cyan
+    }
+    if ($offlineWindows.Count -gt 0) {
+        Write-Host " Windows trouve(s) :" -ForegroundColor Green
+        $i = 1
+        foreach ($w in @($offlineWindows)) {
+            Write-Host "   $i. $($w.windows_path) ($($w.label))" -ForegroundColor Gray
+            $i++
+        }
+    }
+    else {
+        Write-Host " Aucun Windows detecte" -ForegroundColor Yellow
+    }
+    
+    Write-Host ""
+    Write-Host " Volumes disponibles :" -ForegroundColor Cyan
+    foreach ($v in $volumes) {
+        Write-Host "   $($v.DriveLetter): $($v.FileSystemLabel) - $([math]::Round($v.SizeRemaining / 1GB, 0))/ $([math]::Round($v.Size / 1GB, 0)) GB" -ForegroundColor Gray
+    }
+    
+    Write-Host ""
+    Write-Host " 1. Diagnostic complet" -ForegroundColor White
+    Write-Host " 2. Sauvegarde utilisateur" -ForegroundColor White
+    Write-Host " 3. Analyse SMART disques" -ForegroundColor White
+    Write-Host " 4. Reparation boot Windows" -ForegroundColor White
+    Write-Host " 5. Export rapport seul" -ForegroundColor White
+    Write-Host " 6. Reinstallation (preparation)" -ForegroundColor White
+    Write-Host " 7. Analyser Windows hors ligne" -ForegroundColor White
+    Write-Host " 8. Verifier l'integrite systeme" -ForegroundColor White
+    Write-Host " 9. Quitter" -ForegroundColor Red
+    Write-Host ""
+    $choice = Read-Host "Votre choix (1-9)"
+    
+    try {
+        switch ($choice) {
+            "1" { Invoke-Diagnostic }
+            "2" { Invoke-Backup }
+            "3" { Invoke-SMART }
+            "4" { Invoke-BootRepair }
+            "5" { Invoke-Report }
+            "6" { Invoke-Reinstall }
+            "7" { Invoke-Offline }
+            "8" { Invoke-SystemCheck }
+            "9" { Write-Host "Au revoir." -ForegroundColor Cyan; break }
+            default {
+                if ($choice) { Write-Host "Choix invalide." -ForegroundColor Yellow; Start-Sleep -Seconds 2 }
+            }
+        }
+    } catch {
+        Write-Host "[ERREUR] $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Appuyez sur une touche pour continuer..." -ForegroundColor Gray
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    }
+} while ($choice -ne "9")

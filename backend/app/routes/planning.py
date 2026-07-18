@@ -6,6 +6,7 @@ Planning / rendez-vous atelier.
   GET  /planning                     → agenda (liste groupée par jour)
   POST /planning                     → créer un RDV
   POST /planning/{id}/status         → changer le statut
+  POST /planning/{id}/resend-email   → renvoyer l'email RDV
   POST /delete/appointment/{id}      → supprimer (admin)
 """
 from __future__ import annotations
@@ -19,11 +20,16 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import logging
+
 from ..database import get_session
 from ..deps import get_user_or_redirect
-from ..auth import get_admin_or_redirect
-from ..helpers import paginate_query
+from ..auth import get_admin_or_redirect, log_activity
+from ..helpers import paginate_query, status_label_fr
 from ..models import Appointment, Client, Intervention, User
+from ..services.mail import send_text_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 _templates: Jinja2Templates | None = None
@@ -36,6 +42,49 @@ def init_router(templates: Jinja2Templates) -> APIRouter:
 
 
 APPOINTMENT_STATUSES = ["scheduled", "confirmed", "done", "cancelled", "no_show"]
+
+
+def _notify_client_appointment(session: Session, appointment: Appointment, *, event: str) -> str | None:
+    """Envoie un email au client lié au RDV. Retourne un code détail ou None si pas d'envoi."""
+    if not appointment.client_id:
+        return "no_client"
+    client = session.get(Client, appointment.client_id)
+    if not client or not client.email:
+        return "missing_client_email"
+    start_local = appointment.start_at.strftime("%d/%m/%Y à %H:%M")
+    end_txt = ""
+    if appointment.end_at:
+        end_txt = f" (fin prévue {appointment.end_at.strftime('%H:%M')})"
+    status_fr = status_label_fr(appointment.status)
+    if event == "created":
+        subject = f"Confirmation de rendez-vous — {appointment.title}"
+        intro = "Votre rendez-vous a été planifié chez Restor-PC."
+    elif event == "cancelled":
+        subject = f"Annulation de rendez-vous — {appointment.title}"
+        intro = "Votre rendez-vous chez Restor-PC a été annulé."
+    elif event == "resend":
+        subject = f"Rappel de rendez-vous — {appointment.title}"
+        intro = "Voici un rappel de votre rendez-vous chez Restor-PC."
+    else:
+        subject = f"Mise à jour de rendez-vous — {appointment.title}"
+        intro = f"Le statut de votre rendez-vous est passé à : {status_fr}."
+    notes = f"\nNotes : {appointment.notes}\n" if appointment.notes else ""
+    body = (
+        f"Bonjour {client.contact_name or client.name},\n\n"
+        f"{intro}\n\n"
+        f"Titre : {appointment.title}\n"
+        f"Date : {start_local}{end_txt}\n"
+        f"Statut : {status_fr}\n"
+        f"{notes}\n"
+        f"Espace client : https://espace-client.restor-pc.fr/client/login\n\n"
+        f"Cordialement,\nRestor-PC\n"
+    )
+    ok, detail = send_text_email(to_email=client.email, subject=subject, body=body)
+    if ok:
+        logger.info("Email RDV %s envoyé à %s (%s)", appointment.id, client.email, event)
+        return "sent"
+    logger.warning("Email RDV %s vers %s échoué: %s", appointment.id, client.email, detail)
+    return detail
 
 
 @router.get("/planning", response_class=HTMLResponse)
@@ -97,6 +146,7 @@ def create_appointment(
     start_at: str = Form(...),
     end_at: str = Form(""),
     notes: str = Form(""),
+    notify_email: str = Form("on"),
     session: Session = Depends(get_session),
 ):
     user, redirect = get_user_or_redirect(request, session)
@@ -123,7 +173,33 @@ def create_appointment(
     )
     session.add(appointment)
     session.commit()
-    return RedirectResponse("/planning", status_code=303)
+    session.refresh(appointment)
+    want_mail = str(notify_email or "").strip().lower() in {"1", "true", "yes", "on", "o", "oui"}
+    mail_detail = None
+    if want_mail:
+        mail_detail = _notify_client_appointment(session, appointment, event="created")
+    log_activity(session, user, "appointment.create", f"{appointment.id} mail={mail_detail or 'skipped'}")
+    session.commit()
+    q = f"?mail={mail_detail}" if mail_detail else ""
+    return RedirectResponse(f"/planning{q}", status_code=303)
+
+
+@router.post("/planning/{appointment_id}/resend-email")
+def resend_appointment_email(
+    appointment_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
+    appointment = session.scalars(select(Appointment).where(Appointment.id == appointment_id)).first()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Rendez-vous introuvable")
+    mail_detail = _notify_client_appointment(session, appointment, event="resend")
+    log_activity(session, user, "appointment.resend_email", f"{appointment.id} mail={mail_detail}")
+    session.commit()
+    return RedirectResponse(f"/planning?mail={mail_detail}&range_filter=upcoming", status_code=303)
 
 
 @router.post("/planning/{appointment_id}/status")
@@ -139,10 +215,16 @@ def update_appointment_status(
     appointment = session.scalars(select(Appointment).where(Appointment.id == appointment_id)).first()
     if not appointment:
         raise HTTPException(status_code=404, detail="Rendez-vous introuvable")
-    if status in APPOINTMENT_STATUSES:
+    mail_detail = None
+    if status in APPOINTMENT_STATUSES and status != appointment.status:
         appointment.status = status
         session.commit()
-    return RedirectResponse("/planning", status_code=303)
+        event = "cancelled" if status == "cancelled" else "updated"
+        mail_detail = _notify_client_appointment(session, appointment, event=event)
+        log_activity(session, user, "appointment.status", f"{appointment.id} {status} mail={mail_detail}")
+        session.commit()
+    q = f"?mail={mail_detail}" if mail_detail else ""
+    return RedirectResponse(f"/planning{q}", status_code=303)
 
 
 @router.post("/delete/appointment/{appointment_id}")

@@ -249,6 +249,48 @@ def test_upload_metadata_from_inventory() -> None:
     )
 
 
+def test_upload_creates_client_fiche() -> None:
+    """POST /upload avec email/tel/adresse doit crÃ©er ou complÃ©ter la fiche Client."""
+    from app.database import SessionLocal
+    from app.models import Client
+    from sqlalchemy import func, select
+
+    buf = make_sample_zip()
+    r = client.post(
+        "/upload",
+        data={
+            "client_name": "Client Fiche USB",
+            "client_email": "fiche.usb@example.com",
+            "client_phone": "0601020304",
+            "client_address": "12 rue Test 75000 Paris",
+            "client_contact": "Jean Dupont",
+            "send_report_email": "false",
+        },
+        files={"file": ("intervention_fiche.zip", buf, "application/zip")},
+        follow_redirects=False,
+    )
+    if r.status_code != 303:
+        record("POST /upload fiche client", False, f"status={r.status_code}")
+        return
+
+    with SessionLocal() as session:
+        c = session.scalars(
+            select(Client).where(func.lower(Client.name) == "client fiche usb")
+        ).first()
+    ok = (
+        c is not None
+        and c.email == "fiche.usb@example.com"
+        and c.phone == "0601020304"
+        and c.address == "12 rue Test 75000 Paris"
+        and c.contact_name == "Jean Dupont"
+    )
+    record(
+        "POST /upload crÃ©e/complÃ¨te fiche Client",
+        ok,
+        f"email={getattr(c, 'email', None)} phone={getattr(c, 'phone', None)}",
+    )
+
+
 def test_upload_zip_unauthenticated() -> None:
     """Sans UPLOAD_API_KEY ni ALLOW_ANONYMOUS_UPLOAD, l'upload anonyme est refusÃ© (sÃ©curisÃ© par dÃ©faut)."""
     c = make_client()
@@ -1051,6 +1093,7 @@ def main() -> int:
     test_safe_extract_zip_zipslip()
     test_upload_zip_authenticated()
     test_upload_metadata_from_inventory()
+    test_upload_creates_client_fiche()
     test_upload_zip_unauthenticated()
     test_upload_zip_anonymous_allowed_when_opted_in()
     test_downloads_after_upload()

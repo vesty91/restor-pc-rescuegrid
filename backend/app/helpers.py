@@ -19,6 +19,65 @@ logger = logging.getLogger(__name__)
 
 _MONEY_QUANTUM = Decimal("0.01")
 
+# Libellés FR pour les codes statut stockés en anglais en base (compat API / historique).
+STATUS_LABELS_FR: dict[str, str] = {
+    # Factures / devis
+    "draft": "Brouillon",
+    "sent": "Envoyé",
+    "issued": "Émise",
+    "accepted": "Accepté",
+    "paid": "Payée",
+    "cancelled": "Annulé",
+    # RDV
+    "scheduled": "Planifié",
+    "confirmed": "Confirmé",
+    "done": "Terminé",
+    "no_show": "Absent",
+    # Interventions
+    "nouvelle": "Nouvelle",
+    "en_attente": "En attente",
+    "en_cours": "En cours",
+    "termine": "Terminée",
+    "terminee": "Terminée",
+    "terminée": "Terminée",
+    "livre": "Livrée",
+    "facture": "Facturée",
+    "cloturee": "Clôturée",
+    "clôturée": "Clôturée",
+    # Tickets
+    "open": "Ouvert",
+    "in_progress": "En cours",
+    "resolved": "Résolu",
+    "closed": "Fermé",
+    # Risques / divers
+    "healthy": "Sain",
+    "suspect": "Suspect",
+    "critical": "Critique",
+    "pending": "En attente",
+}
+
+_WEEKDAYS_FR = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
+
+
+def status_label_fr(status: str | None) -> str:
+    """Traduit un code statut technique en libellé français pour l'UI."""
+    if status is None or status == "":
+        return "—"
+    key = str(status).strip().lower()
+    return STATUS_LABELS_FR.get(key, str(status).replace("_", " ").capitalize())
+
+
+def format_date_fr(value, with_weekday: bool = False) -> str:
+    """Formate une date/datetime en français (évite les jours anglais du locale NAS)."""
+    if value is None:
+        return "—"
+    try:
+        if with_weekday:
+            return f"{_WEEKDAYS_FR[value.weekday()]} {value.strftime('%d/%m/%Y')}"
+        return value.strftime("%d/%m/%Y")
+    except Exception:
+        return str(value)
+
 
 def to_money(value) -> Decimal:
     """Convertit une valeur formulaire/float en Decimal monétaire (2 décimales)."""

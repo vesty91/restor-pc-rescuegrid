@@ -21,16 +21,23 @@
 <div class="grid2">
   <div class="card">
     <h2>Nouveau devis</h2>
-    <form action="/quotes" method="post">
+    <form action="/quotes" method="post" id="quote-form">
       <label>Intervention</label>
       <select name="intervention_id" required>
         {% for i in interventions %}
         <option value="{{ i.id }}">#{{ i.id }} — {{ i.client.name if i.client else '?' }} — {{ i.machine_name or i.title }}</option>
         {% endfor %}
       </select>
+      <label>Modèle de prestation</label>
+      <select name="service_template" id="quote-template">
+        <option value="">— Personnalisé —</option>
+        {% for t in service_templates or [] %}
+        <option value="{{ t.id }}" data-amount="{{ t.amount }}" data-desc="{{ t.description }}">{{ t.label }}</option>
+        {% endfor %}
+      </select>
       <label>Description client</label>
-      <textarea name="description" rows="3">Diagnostic atelier, contrôle SMART, analyse Windows et rapport d'intervention Restor-PC.</textarea>
-      <label>Montant (€)</label><input name="amount" type="number" step="0.01" value="{% if interventions %}{{ '%.2f'|format(default_billing_amount(interventions[0])) }}{% else %}60.00{% endif %}" required>
+      <textarea name="description" id="quote-desc" rows="3">Diagnostic atelier, contrôle SMART, analyse Windows et rapport d'intervention Restor-PC.</textarea>
+      <label>Montant (€)</label><input name="amount" id="quote-amount" type="number" step="0.01" value="{% if interventions %}{{ '%.2f'|format(default_billing_amount(interventions[0])) }}{% else %}60.00{% endif %}" required>
       <div class="grid2">
         <div><label>Validité jusqu'au</label><input name="valid_until" type="date" value="{{ default_due_date(30) if default_due_date else '' }}"></div>
         <div><label>Statut</label>
@@ -42,9 +49,21 @@
           </select>
         </div>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-weight:600">
+        <input type="checkbox" name="send_email" value="on" style="width:auto">
+        Envoyer le devis par email au client
+      </label>
       <p class="hint" style="margin-top:10px">TVA non applicable, article 293 B du CGI.</p>
       <button style="margin-top:14px">Créer le devis</button>
     </form>
+    <script>
+      document.getElementById('quote-template')?.addEventListener('change', function () {
+        const opt = this.selectedOptions[0];
+        if (!opt || !opt.value) return;
+        document.getElementById('quote-amount').value = parseFloat(opt.dataset.amount).toFixed(2);
+        document.getElementById('quote-desc').value = opt.dataset.desc || '';
+      });
+    </script>
   </div>
 
   <div class="card">
@@ -60,9 +79,7 @@
           <td>{% if q.client %}<a href="/client/{{ q.client.id }}">{{ q.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td><strong>{{ "%.2f"|format(q.total) }} €</strong></td>
           <td>
-            <span class="pill {{ q.status }}">
-              {% if q.status == 'draft' %}Brouillon{% elif q.status == 'sent' %}Envoyé{% elif q.status == 'accepted' %}Accepté{% elif q.status == 'cancelled' %}Refusé{% else %}{{ q.status }}{% endif %}
-            </span>
+            <span class="pill {{ q.status }}">{{ q.status|status_fr }}</span>
           </td>
           <td>
             <div class="action-menu">

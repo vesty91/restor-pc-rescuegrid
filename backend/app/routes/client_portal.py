@@ -31,7 +31,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import oauth
-from ..auth import COOKIE_SECURE, get_admin_or_redirect, hash_password, log_activity, validate_password_strength, verify_password
+from ..auth import (
+    COOKIE_SECURE,
+    get_admin_or_redirect,
+    get_user_or_redirect,
+    hash_password,
+    log_activity,
+    validate_password_strength,
+    verify_password,
+)
 from ..client_auth import (
     CLIENT_COOKIE_NAME,
     authenticate_client_account,
@@ -273,7 +281,8 @@ def enable_client_portal(
     email: str = Form(...),
     session: Session = Depends(get_session),
 ):
-    admin, redirect = get_admin_or_redirect(request, session)
+    # Technicien ou admin : activation quotidienne depuis la fiche client.
+    admin, redirect = get_user_or_redirect(request, session)
     if redirect:
         return redirect
     client = session.scalars(select(Client).where(Client.id == client_id)).first()

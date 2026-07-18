@@ -25,6 +25,7 @@ from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
 from ..helpers import _company_info, allocate_document_number, paginate_query, to_money
 from ..models import Intervention, Invoice
+from ..services.billing_defaults import SERVICE_TEMPLATES, template_by_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -63,6 +64,7 @@ def invoices_list(request: Request, page: int = 1, session: Session = Depends(ge
         "total_pages": total_pages,
         "total_items": total_items,
         "stripe_enabled": stripe_payments.stripe_enabled(),
+        "service_templates": SERVICE_TEMPLATES,
     })
 
 
@@ -76,6 +78,8 @@ def create_invoice(
     amount: float = Form(...),
     due_date: str = Form(""),
     status: str = Form("draft"),
+    service_template: str = Form(""),
+    send_email: str = Form(""),
     session: Session = Depends(get_session),
 ):
     user, redirect = get_user_or_redirect(request, session)
@@ -88,6 +92,12 @@ def create_invoice(
         # cas possible avec un formulaire manipulé ou une intervention supprimée
         # entre le chargement du formulaire et la soumission.
         raise HTTPException(status_code=400, detail="Intervention introuvable pour cette facture")
+    tpl = template_by_id(service_template) if service_template else None
+    if tpl:
+        if not notes or not notes.strip():
+            notes = str(tpl["description"])
+        if not amount or float(amount) <= 0:
+            amount = float(tpl["amount"])
     money = to_money(amount)
     due = None
     if due_date:
@@ -111,6 +121,9 @@ def create_invoice(
 
     invoice = allocate_document_number(session, "INV", Invoice, "invoice_number", build_row)
     logger.info("Facture créée : %s par %s", invoice.invoice_number, user.username)
+    want_mail = str(send_email or "").strip().lower() in {"1", "true", "yes", "on", "o", "oui"}
+    if want_mail:
+        return RedirectResponse(f"/invoice/{invoice.id}/send-email", status_code=303)
     return RedirectResponse("/invoices", status_code=303)
 
 

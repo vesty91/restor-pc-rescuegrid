@@ -31,6 +31,43 @@ def smtp_config() -> dict:
 _smtp_config = smtp_config
 
 
+def _send_message(msg: EmailMessage) -> tuple[bool, str]:
+    cfg = smtp_config()
+    if not cfg["enabled"] or not cfg["password"]:
+        return False, "smtp_not_configured"
+    try:
+        if cfg["use_ssl"]:
+            with smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=30) as smtp:
+                smtp.login(cfg["user"], cfg["password"])
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(cfg["host"], cfg["port"], timeout=30) as smtp:
+                smtp.ehlo()
+                if cfg["use_tls"]:
+                    smtp.starttls()
+                    smtp.ehlo()
+                smtp.login(cfg["user"], cfg["password"])
+                smtp.send_message(msg)
+        return True, "sent"
+    except Exception as exc:
+        logger.warning("Échec SMTP to=%s: %s", msg.get("To"), exc)
+        return False, f"smtp_error:{exc}"
+
+
+def send_text_email(*, to_email: str, subject: str, body: str) -> tuple[bool, str]:
+    """Envoi SMTP simple (texte), sans pièce jointe — RDV, notifications."""
+    cfg = smtp_config()
+    if not cfg["enabled"] or not cfg["password"]:
+        return False, "smtp_not_configured"
+    msg = EmailMessage()
+    msg["From"] = formataddr((cfg["from_name"], cfg["sender"]))
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg["Reply-To"] = cfg["sender"]
+    msg.set_content(body)
+    return _send_message(msg)
+
+
 def send_document_email(
     *,
     to_email: str,
@@ -54,20 +91,7 @@ def send_document_email(
     msg.set_content(body)
     msg.add_attachment(payload, maintype=maintype, subtype=subtype, filename=final_name)
 
-    try:
-        if cfg["use_ssl"]:
-            with smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=30) as smtp:
-                smtp.login(cfg["user"], cfg["password"])
-                smtp.send_message(msg)
-        else:
-            with smtplib.SMTP(cfg["host"], cfg["port"], timeout=30) as smtp:
-                smtp.ehlo()
-                if cfg["use_tls"]:
-                    smtp.starttls()
-                    smtp.ehlo()
-                smtp.login(cfg["user"], cfg["password"])
-                smtp.send_message(msg)
+    ok, detail = _send_message(msg)
+    if ok:
         return True, "sent_pdf" if subtype == "pdf" else "sent_html_fallback"
-    except Exception as exc:
-        logger.warning("Échec SMTP to=%s: %s", to_email, exc)
-        return False, f"smtp_error:{exc}"
+    return False, detail

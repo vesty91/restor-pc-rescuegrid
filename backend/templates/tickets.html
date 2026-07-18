@@ -62,9 +62,7 @@
             {% else %}<span class="pill">Basse</span>{% endif %}
           </td>
           <td>
-            <span class="pill {{ t.status }}">
-              {% if t.status == 'open' %}Ouvert{% elif t.status == 'in_progress' %}En cours{% elif t.status == 'resolved' %}Résolu{% elif t.status == 'closed' %}Fermé{% else %}{{ t.status }}{% endif %}
-            </span>
+            <span class="pill {{ t.status }}">{{ t.status|status_fr }}</span>
           </td>
           <td>{{ t.created_at.strftime('%d/%m/%Y') }}</td>
           <td>

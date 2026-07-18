@@ -44,12 +44,26 @@
   <!-- Import ZIP -->
   <div class="card">
     <h2>Importer une archive ZIP</h2>
-    <p class="muted" style="margin-bottom:12px">Archive générée par l'agent RescueGrid PowerShell sur la machine client.</p>
+    <p class="muted" style="margin-bottom:12px">Archive générée par l'agent RescueGrid (clé USB). Crée / complète la fiche client et l'intervention.</p>
     <form action="/upload" method="post" enctype="multipart/form-data">
       <label>Nom du client</label>
       <input name="client_name" required placeholder="Jean Dupont">
+      <label>Email client</label>
+      <input type="email" name="client_email" placeholder="client@email.fr">
+      <label>Téléphone</label>
+      <input name="client_phone" placeholder="06…">
+      <label>Adresse</label>
+      <input name="client_address" placeholder="Adresse complète">
       <label>Archive ZIP</label>
       <input type="file" name="file" accept=".zip" required>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600">
+        <input type="checkbox" name="activate_portal" value="on" style="width:auto">
+        Activer l'espace client (email requis)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:600">
+        <input type="checkbox" name="send_report_email" value="true" style="width:auto">
+        Envoyer le rapport par email
+      </label>
       <label>Clé API (optionnel)</label>
       <input name="upload_key" placeholder="Laissez vide si connecté">
       <button style="margin-top:14px">Importer l'archive</button>
@@ -106,7 +120,7 @@
             </span>
             {% else %}—{% endif %}
           </td>
-          <td><span class="pill">{{ i.status }}</span></td>
+          <td><span class="pill">{{ i.status|status_fr }}</span></td>
           <td>
             <div class="action-menu">
               <button class="action-menu-btn" type="button">⋯</button>

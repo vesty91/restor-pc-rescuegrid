@@ -21,6 +21,13 @@ param(
     # Optionnel : repli sur RESCUEGRID_UPLOAD_API_KEY depuis rescuegrid.env
     [string]$UploadApiKey,
 
+    # Fiche client (saisie menu USB → upsert dashboard à l'upload)
+    [string]$ClientEmail,
+    [string]$ClientPhone,
+    [string]$ClientAddress,
+    [string]$ClientContact,
+    [switch]$SendReportEmail,
+
     [switch]$SkipConsent,
 
     [string]$PhotoBefore,
@@ -1950,6 +1957,11 @@ Write-Host "[INFO] Dossier intervention: $interventionPath" -ForegroundColor Gra
 $inventory = [ordered]@{}
 $inventory.generated_at = (Get-Date).ToString("o")
 $inventory.client_name = $ClientName
+$inventory.client_email = $ClientEmail
+$inventory.client_phone = $ClientPhone
+$inventory.client_address = $ClientAddress
+$inventory.client_contact = $ClientContact
+$inventory.send_report_email = [bool]$SendReportEmail
 
 # Machine info
 Write-Host "[1/9] Collecte informations machine..." -NoNewline
@@ -2133,6 +2145,11 @@ $guarantees = @(
 $blackBox = [ordered]@{
     intervention_id = $interventionName
     client_name = $ClientName
+    client_email = $ClientEmail
+    client_phone = $ClientPhone
+    client_address = $ClientAddress
+    client_contact = $ClientContact
+    send_report_email = [bool]$SendReportEmail
     started_at = $startedAt.ToString("o")
     finished_at = (Get-Date).ToString("o")
     source_machine = $env:COMPUTERNAME
@@ -2259,16 +2276,104 @@ if ($generatePDF) {
     }
 }
 
+function Send-RescueGridDashboardUpload {
+    <#
+      Upload multipart compatible Windows PowerShell 5.1.
+      -Form (PS 7+) n'existe pas en 5.1 → curl.exe, sinon HttpClient .NET.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Uri,
+        [Parameter(Mandatory)][string]$ZipPath,
+        [Parameter(Mandatory)][string]$ClientName,
+        [string]$ApiKey = "",
+        [string]$ClientEmail = "",
+        [string]$ClientPhone = "",
+        [string]$ClientAddress = "",
+        [string]$ClientContact = "",
+        [bool]$SendReportEmail = $false
+    )
+
+    $extraFields = [ordered]@{
+        client_email = $ClientEmail
+        client_phone = $ClientPhone
+        client_address = $ClientAddress
+        client_contact = $ClientContact
+        send_report_email = ($(if ($SendReportEmail) { "true" } else { "false" }))
+    }
+
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        $curlArgs = @(
+            "--silent", "--show-error", "--fail",
+            "-X", "POST",
+            "-F", "file=@${ZipPath};type=application/zip",
+            "-F", "client_name=$ClientName"
+        )
+        foreach ($key in $extraFields.Keys) {
+            if ($extraFields[$key] -ne "" -or $key -eq "send_report_email") {
+                $curlArgs += @("-F", "$key=$($extraFields[$key])")
+            }
+        }
+        if ($ApiKey) {
+            $curlArgs += @("-F", "upload_key=$ApiKey", "-H", "X-Upload-Key: $ApiKey")
+        }
+        $curlArgs += $Uri
+        $output = & curl.exe @curlArgs 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "curl exit $LASTEXITCODE : $output"
+        }
+        return $output
+    }
+
+    Add-Type -AssemblyName System.Net.Http
+    $client = [System.Net.Http.HttpClient]::new()
+    $multipart = $null
+    try {
+        if ($ApiKey) { $client.DefaultRequestHeaders.TryAddWithoutValidation("X-Upload-Key", $ApiKey) | Out-Null }
+        $multipart = [System.Net.Http.MultipartFormDataContent]::new()
+        $fileBytes = [System.IO.File]::ReadAllBytes($ZipPath)
+        $fileContent = [System.Net.Http.ByteArrayContent]::new($fileBytes)
+        $fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("application/zip")
+        $multipart.Add($fileContent, "file", [System.IO.Path]::GetFileName($ZipPath))
+        $multipart.Add([System.Net.Http.StringContent]::new($ClientName), "client_name")
+        foreach ($key in $extraFields.Keys) {
+            if ($extraFields[$key] -ne "" -or $key -eq "send_report_email") {
+                $multipart.Add([System.Net.Http.StringContent]::new([string]$extraFields[$key]), $key)
+            }
+        }
+        if ($ApiKey) {
+            $multipart.Add([System.Net.Http.StringContent]::new($ApiKey), "upload_key")
+        }
+        $response = $client.PostAsync($Uri, $multipart).GetAwaiter().GetResult()
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        # 303 See Other = succès upload (redirect vers /intervention/{id})
+        $code = [int]$response.StatusCode
+        if ($code -ge 400) {
+            throw "HTTP $code : $body"
+        }
+        return $body
+    }
+    finally {
+        if ($multipart) { $multipart.Dispose() }
+        $client.Dispose()
+    }
+}
+
 # Upload dashboard
 if ($DashboardUploadUrl) {
     Write-Host "[UPLOAD] Envoi vers le dashboard $DashboardUploadUrl..." -NoNewline
     if (Test-Path -LiteralPath $zipPath) {
         try {
-            $form = @{ file = Get-Item $zipPath; client_name = $ClientName }
-            if ($UploadApiKey) { $form.upload_key = $UploadApiKey }
-            $headers = @{}
-            if ($UploadApiKey) { $headers["X-Upload-Key"] = $UploadApiKey }
-            $response = Invoke-RestMethod -Uri $DashboardUploadUrl -Method Post -Form $form -Headers $headers
+            $null = Send-RescueGridDashboardUpload `
+                -Uri $DashboardUploadUrl `
+                -ZipPath $zipPath `
+                -ClientName $ClientName `
+                -ApiKey $UploadApiKey `
+                -ClientEmail $ClientEmail `
+                -ClientPhone $ClientPhone `
+                -ClientAddress $ClientAddress `
+                -ClientContact $ClientContact `
+                -SendReportEmail ([bool]$SendReportEmail)
             Write-Host " OK" -ForegroundColor Green
             Write-ActionLog "Upload dashboard reussi"
         }

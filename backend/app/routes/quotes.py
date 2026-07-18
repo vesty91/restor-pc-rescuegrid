@@ -14,7 +14,13 @@ from ..auth import get_admin_or_redirect, get_user_or_redirect, log_activity
 from ..database import get_session
 from ..helpers import allocate_document_number, invoice_html, paginate_query, quote_html, to_money, try_pdf_response
 from ..models import Invoice, Intervention, Quote
-from ..services.billing_defaults import default_billing_amount, default_due_date, default_service_description
+from ..services.billing_defaults import (
+    SERVICE_TEMPLATES,
+    default_billing_amount,
+    default_due_date,
+    default_service_description,
+    template_by_id,
+)
 from ..services.mail import send_document_email
 
 router = APIRouter()
@@ -68,6 +74,7 @@ def quotes_list(request: Request, page: int = 1, session: Session = Depends(get_
         "user": user,
         "default_billing_amount": default_billing_amount,
         "default_due_date": default_due_date,
+        "service_templates": SERVICE_TEMPLATES,
         "page": page,
         "total_pages": total_pages,
         "total_items": total_items,
@@ -82,6 +89,8 @@ def create_quote(
     description: str = Form(""),
     status: str = Form("draft"),
     valid_until: str = Form(""),
+    service_template: str = Form(""),
+    send_email: str = Form(""),
     session: Session = Depends(get_session),
 ):
     user, redirect = get_user_or_redirect(request, session)
@@ -90,6 +99,12 @@ def create_quote(
     intervention = session.scalars(select(Intervention).where(Intervention.id == intervention_id)).first()
     if not intervention:
         raise HTTPException(status_code=404, detail="Intervention introuvable")
+    tpl = template_by_id(service_template) if service_template else None
+    if tpl:
+        if not description or not description.strip():
+            description = str(tpl["description"])
+        if not amount or amount <= 0:
+            amount = float(tpl["amount"])
     if not amount or amount <= 0:
         amount = default_billing_amount(intervention)
     money = to_money(amount)
@@ -116,6 +131,10 @@ def create_quote(
     quote = allocate_document_number(session, "DEV", Quote, "quote_number", build_row)
     log_activity(session, user, "quote.create", quote.quote_number)
     session.commit()
+
+    want_mail = str(send_email or "").strip().lower() in {"1", "true", "yes", "on", "o", "oui"}
+    if want_mail:
+        return RedirectResponse(f"/quote/{quote.id}/send-email", status_code=303)
     return RedirectResponse("/quotes", status_code=303)
 
 

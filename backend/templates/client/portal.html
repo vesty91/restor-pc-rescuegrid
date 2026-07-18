@@ -54,7 +54,7 @@
             <td>{{ i.created_at.strftime('%d/%m/%Y') }}</td>
             <td>{{ i.title }}</td>
             <td>{{ i.health_score if i.health_score is not none else '—' }}/100</td>
-            <td><span class="pill">{{ i.status }}</span></td>
+            <td><span class="pill">{{ i.status|status_fr }}</span></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -73,7 +73,7 @@
             <td><strong>{{ q.quote_number }}</strong></td>
             <td>{{ q.created_at.strftime('%d/%m/%Y') }}</td>
             <td>{{ "%.2f"|format(q.amount) }} €</td>
-            <td><span class="pill">{{ q.status }}</span></td>
+            <td><span class="pill">{{ q.status|status_fr }}</span></td>
             <td><a href="/client/quote/{{ q.id }}/pdf" target="_blank">Voir le PDF →</a></td>
           </tr>
           {% endfor %}
@@ -93,7 +93,7 @@
             <td><strong>{{ inv.invoice_number }}</strong></td>
             <td>{{ inv.created_at.strftime('%d/%m/%Y') }}</td>
             <td>{{ "%.2f"|format(inv.amount) }} €</td>
-            <td><span class="pill">{{ inv.status }}</span></td>
+            <td><span class="pill">{{ inv.status|status_fr }}</span></td>
             <td><a href="/client/invoice/{{ inv.id }}/pdf" target="_blank">Voir le PDF →</a></td>
           </tr>
           {% endfor %}
@@ -112,7 +112,7 @@
           <tr>
             <td>{{ a.start_at.strftime('%d/%m/%Y %H:%M') }}</td>
             <td>{{ a.title }}</td>
-            <td><span class="pill">{{ a.status }}</span></td>
+            <td><span class="pill">{{ a.status|status_fr }}</span></td>
           </tr>
           {% endfor %}
         </tbody>

@@ -165,9 +165,19 @@ async def upload_intervention(
     client_name: str = Form(...),
     file: UploadFile = File(...),
     upload_key: str = Form(""),
+    client_email: str = Form(""),
+    client_phone: str = Form(""),
+    client_address: str = Form(""),
+    client_contact: str = Form(""),
+    send_report_email: str = Form(""),
+    activate_portal: str = Form(""),
     session: Session = Depends(get_session),
 ):
-    from ..auth import verify_upload_access
+    from ..auth import hash_password, verify_upload_access
+    from ..models import ClientAccount
+    from ..services.mail import send_document_email
+    import secrets
+    import string
 
     client_ip = get_client_ip(request)
     upload_bucket = f"upload_auth:{client_ip}"
@@ -273,13 +283,39 @@ async def upload_intervention(
     # différents saisissant "Dupont Jean" / "dupont jean" ne doivent pas créer deux
     # fiches Client distinctes.
     client_name_clean = client_name.strip()
+    # Repli sur inventory.json si le formulaire multipart n'a pas les champs
+    # (anciens agents) — priorité au Form.
+    form_email = (client_email or "").strip() or str(inventory.get("client_email") or "").strip()
+    form_phone = (client_phone or "").strip() or str(inventory.get("client_phone") or "").strip()
+    form_address = (client_address or "").strip() or str(inventory.get("client_address") or "").strip()
+    form_contact = (client_contact or "").strip() or str(inventory.get("client_contact") or "").strip()
+    want_report_mail = str(send_report_email or inventory.get("send_report_email") or "").strip().lower() in {
+        "1", "true", "yes", "on", "o", "oui",
+    }
+
     client = session.scalars(
         select(Client).where(func.lower(Client.name) == client_name_clean.lower())
     ).first()
     if not client:
-        client = Client(name=client_name_clean)
+        client = Client(
+            name=client_name_clean,
+            email=form_email or None,
+            phone=form_phone or None,
+            address=form_address or None,
+            contact_name=form_contact or None,
+        )
         session.add(client)
         session.flush()
+    else:
+        # Ne pas écraser une fiche complète avec du vide : maj des champs fournis seulement.
+        if form_email:
+            client.email = form_email
+        if form_phone:
+            client.phone = form_phone
+        if form_address:
+            client.address = form_address
+        if form_contact:
+            client.contact_name = form_contact
 
     machine = None
     if bios_serial:
@@ -292,10 +328,12 @@ async def upload_intervention(
         machine.last_intervention = datetime.now(timezone.utc)
 
     report_path_rel = None
+    report_abs: Path | None = None
     for name in ["rapport.html", "report.html", "RescueGrid_Report.html"]:
         p = dest_dir / name
         if p.exists():
             report_path_rel = str(p.relative_to(_STORAGE_DIR))
+            report_abs = p
             break
 
     intervention = Intervention(
@@ -316,6 +354,105 @@ async def upload_intervention(
     folder = dest_dir if dest_dir.exists() else None
     intervention.ai_summary = generate_ai_summary(intervention, folder)
     session.commit()
+
+    # Envoi rapport optionnel : échec mail n'annule pas l'import.
+    if want_report_mail and client.email and report_abs and report_abs.is_file():
+        try:
+            html_body = report_abs.read_text(encoding="utf-8-sig", errors="replace")
+            ok, detail = send_document_email(
+                to_email=client.email,
+                subject=f"Rapport intervention — {machine_name_raw}",
+                body=(
+                    f"Bonjour,\n\nVeuillez trouver ci-joint le rapport d'intervention "
+                    f"Restor-PC pour {client.name} ({machine_name_raw}).\n\n"
+                    f"Cordialement,\nRestor-PC"
+                ),
+                html_attachment=html_body,
+                attachment_name=f"rapport_{intervention.id}.pdf",
+            )
+            if ok:
+                logger.info("Rapport intervention %s envoyé à %s (%s)", intervention.id, client.email, detail)
+            else:
+                logger.warning(
+                    "Envoi rapport intervention %s vers %s échoué: %s",
+                    intervention.id,
+                    client.email,
+                    detail,
+                )
+        except Exception as exc:
+            logger.warning("Envoi rapport intervention %s: %s", intervention.id, exc)
+
+    # Activation espace client en un geste (si demandé + email présent).
+    want_portal = str(activate_portal or "").strip().lower() in {"1", "true", "yes", "on", "o", "oui"}
+    if want_portal and client.email:
+        try:
+            email_clean = client.email.strip().lower()
+            existing_acc = session.scalars(
+                select(ClientAccount).where(ClientAccount.client_id == client.id)
+            ).first()
+            alphabet = string.ascii_letters + string.digits
+            temp_password = "".join(secrets.choice(alphabet) for _ in range(14))
+            if existing_acc:
+                existing_acc.email = email_clean
+                existing_acc.hashed_password = hash_password(temp_password)
+                existing_acc.is_active = True
+            else:
+                taken = session.scalars(
+                    select(ClientAccount).where(ClientAccount.email == email_clean)
+                ).first()
+                if not taken:
+                    session.add(
+                        ClientAccount(
+                            client_id=client.id,
+                            email=email_clean,
+                            hashed_password=hash_password(temp_password),
+                            is_active=True,
+                        )
+                    )
+                    session.commit()
+                    login_url = "https://espace-client.restor-pc.fr/client/login"
+                    send_document_email(
+                        to_email=email_clean,
+                        subject="Votre espace client Restor-PC est activé",
+                        body=(
+                            f"Bonjour {client.name},\n\n"
+                            "Votre espace client Restor-PC est maintenant actif.\n\n"
+                            f"Identifiant : {email_clean}\n"
+                            f"Mot de passe temporaire : {temp_password}\n\n"
+                            f"Connexion : {login_url}\n\n"
+                            "Cordialement,\nRestor-PC\n"
+                        ),
+                        html_attachment=(
+                            f"<p>Identifiant : {email_clean}<br>"
+                            f"Mot de passe temporaire : {temp_password}</p>"
+                        ),
+                        attachment_name="acces-espace-client.pdf",
+                    )
+                else:
+                    logger.warning("Activation portail ignorée : email %s déjà utilisé", email_clean)
+            if existing_acc:
+                session.commit()
+                login_url = "https://espace-client.restor-pc.fr/client/login"
+                send_document_email(
+                    to_email=email_clean,
+                    subject="Votre espace client Restor-PC est activé",
+                    body=(
+                        f"Bonjour {client.name},\n\n"
+                        "Votre espace client Restor-PC a été réactivé.\n\n"
+                        f"Identifiant : {email_clean}\n"
+                        f"Mot de passe temporaire : {temp_password}\n\n"
+                        f"Connexion : {login_url}\n\n"
+                        "Cordialement,\nRestor-PC\n"
+                    ),
+                    html_attachment=(
+                        f"<p>Identifiant : {email_clean}<br>"
+                        f"Mot de passe temporaire : {temp_password}</p>"
+                    ),
+                    attachment_name="acces-espace-client.pdf",
+                )
+        except Exception as exc:
+            logger.warning("Activation espace client après upload échouée: %s", exc)
+
     return RedirectResponse(f"/intervention/{intervention.id}", status_code=303)
 
 
@@ -328,6 +465,9 @@ def update_status(
     status: str = Form(...),
     session: Session = Depends(get_session),
 ):
+    from ..helpers import status_label_fr
+    from ..services.mail import send_text_email
+
     user, redirect = get_user_or_redirect(request, session)
     if redirect:
         return redirect
@@ -335,9 +475,39 @@ def update_status(
     if not intervention:
         raise HTTPException(status_code=404, detail="Intervention introuvable")
     allowed = {"nouvelle", "en_attente", "en_cours", "termine", "livre", "facture"}
-    intervention.status = status if status in allowed else "nouvelle"
+    old_status = intervention.status
+    new_status = status if status in allowed else "nouvelle"
+    intervention.status = new_status
     session.commit()
-    return RedirectResponse(f"/intervention/{intervention_id}", status_code=303)
+
+    mail_detail = None
+    # Notifier le client sur les changements utiles (pas sur chaque micro-statut interne).
+    notify_statuses = {"en_cours", "termine", "livre", "facture"}
+    if new_status != old_status and new_status in notify_statuses:
+        client = intervention.client
+        if client and client.email:
+            ok, detail = send_text_email(
+                to_email=client.email,
+                subject=f"Intervention — {status_label_fr(new_status)}",
+                body=(
+                    f"Bonjour {client.contact_name or client.name},\n\n"
+                    f"Le statut de votre intervention a été mis à jour.\n\n"
+                    f"Titre : {intervention.title}\n"
+                    f"Nouveau statut : {status_label_fr(new_status)}\n\n"
+                    f"Espace client : https://espace-client.restor-pc.fr/client/login\n\n"
+                    f"Cordialement,\nRestor-PC\n"
+                ),
+            )
+            mail_detail = "sent" if ok else detail
+            logger.info(
+                "Email statut intervention %s -> %s (%s)",
+                intervention.id,
+                client.email,
+                mail_detail,
+            )
+
+    suffix = f"?mail={mail_detail}" if mail_detail else ""
+    return RedirectResponse(f"/intervention/{intervention_id}{suffix}", status_code=303)
 
 
 # ── Supprimer ─────────────────────────────────────────────────────────────────

@@ -455,6 +455,11 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.globals["app_version"] = APP_VERSION
 
+from .helpers import format_date_fr, status_label_fr
+
+templates.env.filters["status_fr"] = status_label_fr
+templates.env.filters["date_fr"] = format_date_fr
+
 
 def pagination_query(request: Request, page: int) -> str:
     """Construit l'URL de la page courante avec un numéro de page différent,

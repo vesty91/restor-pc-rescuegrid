@@ -9,6 +9,17 @@
   <p>{{ total_items }} rendez-vous — atelier et interventions à domicile.</p>
 </div>
 
+{% if request.query_params.get('mail') %}
+<div class="notice {% if request.query_params.get('mail') == 'sent' %}success{% else %}error{% endif %}" style="margin-bottom:14px">
+  {% if request.query_params.get('mail') == 'sent' %}✓ Email de rendez-vous envoyé au client.
+  {% elif request.query_params.get('mail') == 'missing_client_email' %}⚠ Client sans email — RDV enregistré, aucun mail envoyé.
+  {% elif request.query_params.get('mail') == 'no_client' %}⚠ Aucun client lié — RDV enregistré, aucun mail envoyé.
+  {% elif request.query_params.get('mail') == 'smtp_not_configured' %}⚠ SMTP non configuré — RDV enregistré, mail non envoyé.
+  {% else %}⚠ Envoi email échoué ({{ request.query_params.get('mail') }}) — RDV enregistré.
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="card" style="margin-bottom:16px;padding:14px 18px">
   <div style="display:flex;gap:10px;flex-wrap:wrap">
     <a href="/planning?range_filter=week" class="btn {{ 'btn-secondary' if range_filter != 'week' else '' }} btn-sm">Cette semaine</a>
@@ -27,7 +38,7 @@
       <label>Client</label>
       <select name="client_id">
         <option value="0">— Aucun —</option>
-        {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}{% if c.email %} — {{ c.email }}{% else %} — (pas d'email){% endif %}</option>{% endfor %}
       </select>
       <label>Intervention liée</label>
       <select name="intervention_id">
@@ -45,6 +56,11 @@
       </div>
       <label>Notes</label>
       <textarea name="notes" rows="2" placeholder="Détails, adresse, précisions…"></textarea>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-weight:600">
+        <input type="checkbox" name="notify_email" value="on" checked style="width:auto">
+        Envoyer un email de confirmation au client
+      </label>
+      <p class="hint">Nécessite un email sur la fiche client. Test SMTP : Paramètres → Email.</p>
       <button style="margin-top:14px">Créer le rendez-vous</button>
     </form>
   </div>
@@ -54,7 +70,7 @@
     {% if grouped %}
       {% for day_group in grouped %}
       <div style="margin-bottom:18px">
-        <h3 style="margin:0 0 8px;color:var(--muted);font-size:13px;text-transform:uppercase">{{ day_group.day.strftime('%A %d/%m/%Y') }}</h3>
+        <h3 style="margin:0 0 8px;color:var(--muted);font-size:13px;text-transform:uppercase">{{ day_group.day|date_fr(true) }}</h3>
         <table>
           <thead><tr><th>Heure</th><th>Titre</th><th>Client</th><th>Technicien</th><th>Statut</th><th></th></tr></thead>
           <tbody>
@@ -67,13 +83,16 @@
               <td>
                 <form action="/planning/{{ a.id }}/status" method="post">
                   <select name="status" onchange="this.form.submit()">
-                    {% for st in appointment_statuses %}<option value="{{ st }}" {% if a.status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}
+                    {% for st in appointment_statuses %}<option value="{{ st }}" {% if a.status == st %}selected{% endif %}>{{ st|status_fr }}</option>{% endfor %}
                   </select>
                 </form>
               </td>
-              <td>
-                <form action="/delete/appointment/{{ a.id }}" method="post" onsubmit="return confirm('Supprimer ce rendez-vous ?')">
-                  <button class="btn-sm">✕</button>
+              <td style="white-space:nowrap">
+                <form action="/planning/{{ a.id }}/resend-email" method="post" style="display:inline" title="Renvoyer l'email RDV">
+                  <button class="btn-sm" type="submit">✉</button>
+                </form>
+                <form action="/delete/appointment/{{ a.id }}" method="post" style="display:inline" onsubmit="return confirm('Supprimer ce rendez-vous ?')">
+                  <button class="btn-sm" type="submit">✕</button>
                 </form>
               </td>
             </tr>
