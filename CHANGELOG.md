@@ -9,8 +9,12 @@
 - **`install_dependencies.ps1`** : contrôle `$LASTEXITCODE` après pip ;
   dossiers `backend/storage`.
 - **`docker-compose.dev.yml`** : `alembic upgrade head` avant uvicorn.
-- **CI** : étape `alembic upgrade head` sur SQLite ; ruff non ignoré.
+- **CI** : étape `alembic upgrade head` sur SQLite ; ruff non ignoré ;
+  mypy (progressif) + pytest-cov.
 - **Pins** : `psycopg[binary]==3.3.4`, `alembic==1.18.5`.
+- **Versions affichées** harmonisées sur 12.5.2 (README, docs, compose).
+- **`server_default`** alignés sur les migrations Alembic ; init SQLite
+  via `alembic upgrade head` (plus de `create_all` + stamp sur BDD vierge).
 
 ## v12.5.1 — Durcissement technique (priorités revue qualité)
 

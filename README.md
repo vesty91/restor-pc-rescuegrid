@@ -1,4 +1,4 @@
-# Restor-PC RescueGrid v12 Stable
+# Restor-PC RescueGrid v12.5.2
 
 Plateforme atelier pour diagnostic PC, suivi d'interventions, clients, machines, devis, factures, rapports et envoi SMTP Infomaniak avec PDF joint.
 
@@ -46,4 +46,4 @@ Utiliser le mot de passe d'application Infomaniak, pas forcément le mot de pass
 
 ## Version
 
-v12.5.1 — durcissement technique (IP proxy, Alembic sûr, montants Decimal, déploiement CD avec tests/migration avant bascule, upload streaming, Python 3.12 only), double authentification (2FA/TOTP) obligatoire pour l'admin, sauvegardes automatiques fiabilisées et alertées (email + ntfy), monitoring auto-hébergé (Uptime Kuma), paiement en ligne Stripe, relances automatisables, espace client, planning & RDV, export comptable, mode multi-poste/Synology, pipeline ADK WinPE, revue de sécurité.
+v12.5.2 — migrations SQLite fiabilisées (FK `0008`, `server_default` alignés), durcissement technique (IP proxy, Alembic, montants Decimal, CD NAS), 2FA admin, sauvegardes alertées, Uptime Kuma, Stripe, espace client, planning & RDV, export comptable, Synology, pipeline ADK WinPE.

@@ -1,4 +1,4 @@
-# Guide Alembic — Restor-PC RescueGrid v12.2
+# Guide Alembic — Restor-PC RescueGrid v12.5.2
 
 ## Pourquoi Alembic ?
 

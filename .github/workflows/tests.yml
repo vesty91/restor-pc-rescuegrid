@@ -21,7 +21,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff pytest
+          pip install ruff pytest pytest-cov mypy
       - name: Ruff (lint rapide)
         working-directory: backend
         # E402 ignoré : imports différés volontaires dans main.py / models.py
@@ -31,9 +31,16 @@ jobs:
         env:
           DATABASE_URL: sqlite:////tmp/rescuegrid_migration_test.db
         run: python -m alembic upgrade head
-      - name: Pytest (unitaires progressifs)
+      - name: Mypy (typage progressif)
         working-directory: backend
-        run: python -m pytest tests/test_unit_pytest.py -q
+        # Non bloquant tant que le typage n'est pas généralisé au dépôt.
+        continue-on-error: true
+        run: python -m mypy app --config-file ../pyproject.toml
+      - name: Pytest (unitaires + couverture)
+        working-directory: backend
+        run: |
+          python -m pytest tests/test_unit_pytest.py -q \
+            --cov=app --cov-report=term-missing --cov-fail-under=0
       - name: Suite de tests
         working-directory: backend
         run: python tests/run_tests.py

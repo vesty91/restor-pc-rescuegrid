@@ -1,5 +1,5 @@
 """
-main.py — Restor-PC RescueGrid v12.2
+main.py — Restor-PC RescueGrid v12.5.2
 --------------------------------------
 Point d'entrée FastAPI — réduit à l'essentiel.
 

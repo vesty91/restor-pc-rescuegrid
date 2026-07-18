@@ -5,7 +5,7 @@ from decimal import Decimal
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -61,8 +61,8 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    role: Mapped[str] = mapped_column(String(80), default="technicien")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    role: Mapped[str] = mapped_column(String(80), default="technicien", server_default="technicien")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     # Double authentification (TOTP, compatible Google Authenticator/Authy) —
@@ -72,7 +72,7 @@ class User(Base):
     # jamais en base) ; totp_recovery_codes est une liste JSON de hachages
     # bcrypt a usage unique (perte du telephone).
     totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     totp_recovery_codes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
 
@@ -85,7 +85,7 @@ class Part(Base):
     model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     serial_number: Mapped[str | None] = mapped_column(String(255), nullable=True)
     capacity_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     purchase_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
@@ -104,11 +104,11 @@ class Intervention(Base):
     data_loss_risk: Mapped[str | None] = mapped_column(String(80), nullable=True)
     disk_risk: Mapped[str | None] = mapped_column(String(80), nullable=True)
     offline_windows: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    status: Mapped[str] = mapped_column(String(80), default="nouvelle")
+    status: Mapped[str] = mapped_column(String(80), default="nouvelle", server_default="nouvelle")
     archive_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     report_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    labor_minutes: Mapped[int] = mapped_column(Integer, default=0)
-    labor_rate: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.0"))
+    labor_minutes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    labor_rate: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.0"), server_default="0")
     signature_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
@@ -130,9 +130,9 @@ class Quote(Base):
     quote_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     amount: Mapped[Decimal] = mapped_column(Money)
-    tax: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.0"))
+    tax: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.0"), server_default="0")
     total: Mapped[Decimal] = mapped_column(Money)
-    status: Mapped[str] = mapped_column(String(50), default="draft")
+    status: Mapped[str] = mapped_column(String(50), default="draft", server_default="draft")
     valid_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
@@ -149,9 +149,9 @@ class Invoice(Base):
     quote_id: Mapped[int | None] = mapped_column(ForeignKey("quote.id", ondelete="SET NULL"), nullable=True)
     invoice_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     amount: Mapped[Decimal] = mapped_column(Money)
-    tax: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.0"))
+    tax: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.0"), server_default="0")
     total: Mapped[Decimal] = mapped_column(Money)
-    status: Mapped[str] = mapped_column(String(50), default="draft")
+    status: Mapped[str] = mapped_column(String(50), default="draft", server_default="draft")
     due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     payment_method: Mapped[str | None] = mapped_column(String(80), nullable=True)
@@ -177,9 +177,9 @@ class Ticket(Base):
     client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    status: Mapped[str] = mapped_column(String(50), default="open")
-    priority: Mapped[str] = mapped_column(String(50), default="medium")
-    time_spent_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(50), default="open", server_default="open")
+    priority: Mapped[str] = mapped_column(String(50), default="medium", server_default="medium")
+    time_spent_minutes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
@@ -193,7 +193,7 @@ class InterventionPhoto(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     intervention_id: Mapped[int] = mapped_column(ForeignKey("intervention.id", ondelete="CASCADE"))
-    phase: Mapped[str] = mapped_column(String(20), default="during")
+    phase: Mapped[str] = mapped_column(String(20), default="during", server_default="during")
     file_path: Mapped[str] = mapped_column(String(1024))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
@@ -210,7 +210,7 @@ class InterventionPart(Base):
     # delete_part dans routes/parts.py, qui intercepte l'IntegrityError pour
     # afficher un message clair plutôt qu'une erreur 500).
     part_id: Mapped[int] = mapped_column(ForeignKey("part.id"))
-    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
@@ -244,7 +244,7 @@ class Appointment(Base):
     notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     start_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     end_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    status: Mapped[str] = mapped_column(String(50), default="scheduled")
+    status: Mapped[str] = mapped_column(String(50), default="scheduled", server_default="scheduled")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     client: Mapped["Client | None"] = relationship()
@@ -264,7 +264,7 @@ class ClientAccount(Base):
     client_id: Mapped[int] = mapped_column(ForeignKey("client.id", ondelete="CASCADE"), unique=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     client: Mapped["Client"] = relationship()
