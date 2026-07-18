@@ -10,10 +10,17 @@
 $ErrorActionPreference = "Stop"
 $rootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Python 3.12 uniquement (image Docker = python:3.12-slim-bookworm). Un simple
+# "python" du PATH peut pointer vers 3.11/3.13/3.14 : on vérifie la version
+# réelle, pas seulement l'existence de la commande.
+function Test-RescueGridPythonVersion {
+    param([string]$VersionText)
+    return $VersionText -match "^Python 3\.12(\.|$)"
+}
+
 function Get-RescueGridPython {
     $candidates = @(
         @("py", "-3.12"),
-        @("py", "-3.11"),
         @("python", "")
     )
 
@@ -22,16 +29,16 @@ function Get-RescueGridPython {
         $arg = $candidate[1]
         try {
             if ($arg -eq "") {
-                $versionText = & $exe --version 2>&1
+                $versionText = (& $exe --version 2>&1).ToString().Trim()
             } else {
-                $versionText = & $exe $arg --version 2>&1
+                $versionText = (& $exe $arg --version 2>&1).ToString().Trim()
             }
 
-            if ($versionText -match "Python 3\.(1[1-9]|[2-9]\d+)") {
+            if (Test-RescueGridPythonVersion $versionText) {
                 return @{
                     Exe = $exe
                     Arg = $arg
-                    Version = $versionText.ToString()
+                    Version = $versionText
                 }
             }
         }
@@ -40,7 +47,7 @@ function Get-RescueGridPython {
         }
     }
 
-    throw "Python 3.11 ou 3.12 introuvable. Installe Python 3.12 avec : winget install Python.Python.3.12"
+    throw "Python 3.12 introuvable (seule version supportée). Installe-le avec : winget install Python.Python.3.12"
 }
 
 Write-Host "=============================================" -ForegroundColor Cyan
@@ -62,6 +69,20 @@ if (-not (Test-Path $backendDir)) {
     throw "Dossier backend introuvable : $backendDir"
 }
 
+$venvPythonExe = Join-Path $venvPath "Scripts\python.exe"
+
+if ((Test-Path $venvPath) -and (Test-Path $venvPythonExe)) {
+    # Le .venv existe déjà : vérifie qu'il a bien été créé avec Python 3.12
+    # et pas une autre version (3.11/3.13/3.14 devenue le "python" par défaut
+    # du PATH) — sinon les dépendances compilées (psycopg, cryptography...)
+    # peuvent échouer à l'installation ou au runtime de façon peu explicite.
+    $venvVersionText = (& $venvPythonExe --version 2>&1).ToString().Trim()
+    if (-not (Test-RescueGridPythonVersion $venvVersionText)) {
+        Write-Host " INCOMPATIBLE ($venvVersionText) -> recreation..." -ForegroundColor Yellow
+        Remove-Item -Path $venvPath -Recurse -Force
+    }
+}
+
 if (-not (Test-Path $venvPath)) {
     Push-Location $backendDir
     try {
@@ -70,14 +91,14 @@ if (-not (Test-Path $venvPath)) {
         } else {
             & $py.Exe $py.Arg -m venv .venv
         }
-        Write-Host " CREE" -ForegroundColor Green
+        Write-Host " CREE ($($py.Version))" -ForegroundColor Green
     }
     finally {
         Pop-Location
     }
 }
 else {
-    Write-Host " DEJA EXISTANT" -ForegroundColor Green
+    Write-Host " DEJA EXISTANT ($venvVersionText)" -ForegroundColor Green
 }
 
 # === 3. Installer les dependances pip ===

@@ -59,6 +59,7 @@
       <div class="qr"><img src="{{ qr_data_uri }}" alt="QR code 2FA"></div>
       <div class="secret">{{ secret }}</div>
       <form method="post">
+        {{ csrf_field(request)|safe }}
         <label>Code à 6 chiffres</label>
         <input name="code" required autofocus inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code">
         <button>Activer la 2FA</button>

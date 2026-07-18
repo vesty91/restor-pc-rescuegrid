@@ -268,8 +268,13 @@ bannière sur `/relances`.
 
 Un script (`scripts/nas_auto_deploy.sh`) automatise la mise à jour : détection
 d'un nouveau commit sur `origin/main`, `git pull`, reconstruction de l'image
-`backend`, redémarrage, migration Alembic, puis vérification `/health` —
-avec notification push (ntfy) en cas de succès **ou** d'échec.
+`backend` (taguée par hash Git pour rollback manuel), **garde de tests**
+(la suite de tests tourne dans un conteneur jetable de la nouvelle image,
+base SQLite isolée — un test qui casse annule tout le déploiement avant même
+de toucher la base de production), migration Alembic (avant la bascule du
+conteneur, pas après), bascule du conteneur, puis vérification `/health` —
+avec rollback automatique vers l'image précédente si le healthcheck échoue,
+et notification push (ntfy) en cas de succès **ou** d'échec à chaque étape.
 
 **Pourquoi un script planifié sur le NAS plutôt qu'un webhook GitHub → NAS ?**
 Le NAS n'expose sur internet que le port 443 (voir étape 5) ; un webhook de

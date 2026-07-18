@@ -50,6 +50,7 @@
         {% endfor %}
       </div>
       <form method="post" action="/2fa/setup/continue">
+        {{ csrf_field(request)|safe }}
         <button>J'ai noté mes codes — continuer</button>
       </form>
     </div>

@@ -1,8 +1,14 @@
 FROM python:3.12-slim-bookworm
 
+# Injectée au build (voir docker-compose.synology.yml / nas_auto_deploy.sh) car
+# le contexte de build est limité à backend/ : le fichier VERSION à la racine
+# du projet n'est pas accessible en COPY depuis ici (voir app/version.py).
+ARG APP_VERSION=0.0.0-dev
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    STORAGE_PATH=/app/storage
+    STORAGE_PATH=/app/storage \
+    APP_VERSION=${APP_VERSION}
 
 WORKDIR /app
 
@@ -46,6 +52,10 @@ COPY templates ./templates
 COPY static ./static
 COPY alembic ./alembic
 COPY alembic.ini .
+# La suite de tests est incluse dans l'image (poids négligeable) pour pouvoir
+# la lancer contre l'image nouvellement construite avant bascule en production
+# — voir scripts/nas_auto_deploy.sh, étape "garde de tests".
+COPY tests ./tests
 
 RUN mkdir -p /app/storage /app/storage/uploads /app/storage/reports
 

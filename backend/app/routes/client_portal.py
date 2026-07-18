@@ -43,9 +43,10 @@ from ..client_auth import (
     record_client_login_failure,
 )
 from ..database import get_session
+from ..deps import get_client_ip
 from ..helpers import invoice_html, quote_html, try_pdf_response
 from ..models import Appointment, Client, ClientAccount, ClientOAuthIdentity, Invoice, Intervention, Quote
-from ..routes_v10 import send_document_email as _send_email_fn
+from ..services.mail import send_document_email as _send_email_fn
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def client_login_post(
     password: str = Form(...),
     session: Session = Depends(get_session),
 ):
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     email_key = email.strip().lower()
 
     if is_client_rate_limited(client_ip):

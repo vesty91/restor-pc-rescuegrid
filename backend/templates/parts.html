@@ -9,6 +9,10 @@
   <p>SSD, HDD, RAM, CPU, GPU — suivi du stock de pièces détachées.</p>
 </div>
 
+{% if request.query_params.get('error') == 'part_in_use' %}
+<div class="notice error">✗ Impossible de supprimer cette pièce : elle est référencée dans l'historique d'au moins une intervention.</div>
+{% endif %}
+
 <div class="grid2">
   <div class="card">
     <h2>Ajouter une pièce</h2>

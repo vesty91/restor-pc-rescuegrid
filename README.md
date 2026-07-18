@@ -11,7 +11,7 @@ powershell -ExecutionPolicy Bypass -File install_dependencies.ps1
 
 Dashboard : http://localhost:8000
 
-Login par défaut : `admin` / mot de passe défini dans `.env` (`ADMIN_PASSWORD`), ou généré aléatoirement et affiché une seule fois dans les logs serveur si `.env` ne le définit pas (voir `docker-compose.yml` pour le dev local, où il reste fixé à `rescuegrid2026` par confort).
+Login par défaut : `admin` / mot de passe défini dans `.env` (`ADMIN_PASSWORD`), ou généré aléatoirement et affiché une seule fois dans les logs serveur si `.env` ne le définit pas. Pour lancer l'app dans Docker en local (SQLite, sans passer par les scripts `.bat`), copier `.env.example` vers `.env` puis `docker compose -f docker-compose.dev.yml up` — ce fichier refuse de démarrer sans `SECRET_KEY`/`ADMIN_PASSWORD` définis dans `.env` (plus de mot de passe par défaut en dur).
 
 ## Configuration e-mail Infomaniak
 
@@ -46,4 +46,4 @@ Utiliser le mot de passe d'application Infomaniak, pas forcément le mot de pass
 
 ## Version
 
-v12.5.0 — double authentification (2FA/TOTP) obligatoire pour l'admin, sauvegardes automatiques fiabilisées et alertées (email + ntfy), monitoring auto-hébergé (Uptime Kuma), déploiement continu sans SSH manuel vers le NAS, paiement en ligne Stripe sur les factures (webhook de confirmation automatique), relances devis/factures automatisables (cron interne désactivé par défaut), espace client (mot de passe / Google / GitHub), planning & RDV, export comptable, sauvegarde planifiée, mode multi-poste/Synology, pagination, verrouillage de compte, pipeline ADK WinPE automatisé, revue de sécurité complète (secrets, cookies, XSS, en-têtes HTTP, conteneur non-root).
+v12.5.1 — durcissement technique (IP proxy, Alembic sûr, montants Decimal, déploiement CD avec tests/migration avant bascule, upload streaming, Python 3.12 only), double authentification (2FA/TOTP) obligatoire pour l'admin, sauvegardes automatiques fiabilisées et alertées (email + ntfy), monitoring auto-hébergé (Uptime Kuma), paiement en ligne Stripe, relances automatisables, espace client, planning & RDV, export comptable, mode multi-poste/Synology, pipeline ADK WinPE, revue de sécurité.

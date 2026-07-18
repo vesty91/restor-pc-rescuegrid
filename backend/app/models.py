@@ -1,13 +1,23 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+
+# Colonnes monétaires (montants HT/TVA/TTC des devis/factures, taux horaire) :
+# NUMERIC(10, 2) plutôt que FLOAT — un flottant binaire ne peut pas représenter
+# exactement la plupart des valeurs décimales (0.1 + 0.2 != 0.3 en binaire), ce
+# qui peut faire dériver des totaux de quelques centimes après des additions
+# répétées, ou casser des comparaisons d'égalité. NUMERIC stocke la valeur
+# décimale exacte et SQLAlchemy la restitue en Decimal Python (voir
+# app/helpers.py:to_money pour la conversion sûre depuis un float/form).
+Money = Numeric(12, 2)
 
 
 class Client(Base):
@@ -83,8 +93,8 @@ class Intervention(Base):
     __tablename__ = "intervention"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id"), nullable=True)
-    machine_id: Mapped[int | None] = mapped_column(ForeignKey("machine.id"), nullable=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id", ondelete="SET NULL"), nullable=True)
+    machine_id: Mapped[int | None] = mapped_column(ForeignKey("machine.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(255))
     machine_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     bios_serial: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -96,7 +106,7 @@ class Intervention(Base):
     archive_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     report_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     labor_minutes: Mapped[int] = mapped_column(Integer, default=0)
-    labor_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    labor_rate: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.0"))
     signature_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
@@ -113,13 +123,13 @@ class Quote(Base):
     __tablename__ = "quote"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    intervention_id: Mapped[int | None] = mapped_column(ForeignKey("intervention.id"), nullable=True)
-    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id"), nullable=True)
+    intervention_id: Mapped[int | None] = mapped_column(ForeignKey("intervention.id", ondelete="SET NULL"), nullable=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id", ondelete="SET NULL"), nullable=True)
     quote_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    amount: Mapped[float] = mapped_column(Float)
-    tax: Mapped[float] = mapped_column(Float, default=0.0)
-    total: Mapped[float] = mapped_column(Float)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    tax: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.0"))
+    total: Mapped[Decimal] = mapped_column(Money)
     status: Mapped[str] = mapped_column(String(50), default="draft")
     valid_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
@@ -132,13 +142,13 @@ class Invoice(Base):
     __tablename__ = "invoice"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    intervention_id: Mapped[int | None] = mapped_column(ForeignKey("intervention.id"), nullable=True)
-    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id"), nullable=True)
-    quote_id: Mapped[int | None] = mapped_column(ForeignKey("quote.id"), nullable=True)
+    intervention_id: Mapped[int | None] = mapped_column(ForeignKey("intervention.id", ondelete="SET NULL"), nullable=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id", ondelete="SET NULL"), nullable=True)
+    quote_id: Mapped[int | None] = mapped_column(ForeignKey("quote.id", ondelete="SET NULL"), nullable=True)
     invoice_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    amount: Mapped[float] = mapped_column(Float)
-    tax: Mapped[float] = mapped_column(Float, default=0.0)
-    total: Mapped[float] = mapped_column(Float)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    tax: Mapped[Decimal] = mapped_column(Money, default=Decimal("0.0"))
+    total: Mapped[Decimal] = mapped_column(Money)
     status: Mapped[str] = mapped_column(String(50), default="draft")
     due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -161,8 +171,8 @@ class Ticket(Base):
     __tablename__ = "ticket"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    intervention_id: Mapped[int | None] = mapped_column(ForeignKey("intervention.id"), nullable=True)
-    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id"), nullable=True)
+    intervention_id: Mapped[int | None] = mapped_column(ForeignKey("intervention.id", ondelete="SET NULL"), nullable=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="open")
@@ -180,7 +190,7 @@ class InterventionPhoto(Base):
     __tablename__ = "intervention_photo"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    intervention_id: Mapped[int] = mapped_column(ForeignKey("intervention.id"))
+    intervention_id: Mapped[int] = mapped_column(ForeignKey("intervention.id", ondelete="CASCADE"))
     phase: Mapped[str] = mapped_column(String(20), default="during")
     file_path: Mapped[str] = mapped_column(String(1024))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
@@ -192,7 +202,11 @@ class InterventionPart(Base):
     __tablename__ = "intervention_part"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    intervention_id: Mapped[int] = mapped_column(ForeignKey("intervention.id"))
+    intervention_id: Mapped[int] = mapped_column(ForeignKey("intervention.id", ondelete="CASCADE"))
+    # Pas de ondelete ici (RESTRICT implicite) : une pièce déjà utilisée dans
+    # une intervention ne doit pas pouvoir être supprimée silencieusement (voir
+    # delete_part dans routes/parts.py, qui intercepte l'IntegrityError pour
+    # afficher un message clair plutôt qu'une erreur 500).
     part_id: Mapped[int] = mapped_column(ForeignKey("part.id"))
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -214,16 +228,16 @@ class Reminder(Base):
     target_type: Mapped[str] = mapped_column(String(20))
     target_id: Mapped[int] = mapped_column(Integer, index=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
-    sent_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
+    sent_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
 
 
 class Appointment(Base):
     __tablename__ = "appointment"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id"), nullable=True)
-    intervention_id: Mapped[int | None] = mapped_column(ForeignKey("intervention.id"), nullable=True)
-    technician_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.id", ondelete="SET NULL"), nullable=True)
+    intervention_id: Mapped[int | None] = mapped_column(ForeignKey("intervention.id", ondelete="SET NULL"), nullable=True)
+    technician_id: Mapped[int | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(255))
     notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     start_at: Mapped[datetime] = mapped_column(DateTime, index=True)
@@ -245,7 +259,7 @@ class ClientAccount(Base):
     __tablename__ = "client_account"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey("client.id"), unique=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("client.id", ondelete="CASCADE"), unique=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -264,7 +278,7 @@ class ClientOAuthIdentity(Base):
     __tablename__ = "client_oauth_identity"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    client_account_id: Mapped[int] = mapped_column(ForeignKey("client_account.id"))
+    client_account_id: Mapped[int] = mapped_column(ForeignKey("client_account.id", ondelete="CASCADE"))
     provider: Mapped[str] = mapped_column(String(20))
     provider_user_id: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
@@ -280,7 +294,7 @@ class ActivityLog(Base):
     __tablename__ = "activity_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     action: Mapped[str] = mapped_column(String(120))
     detail: Mapped[str | None] = mapped_column(String(2000), nullable=True)

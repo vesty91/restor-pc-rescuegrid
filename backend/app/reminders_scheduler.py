@@ -53,7 +53,7 @@ def run_due_reminders() -> tuple[int, int]:
     manuel (ex. future route "relancer tout maintenant")."""
     # Import tardif : évite tout import circulaire au chargement du module
     # (routes_v10.py importe déjà des éléments d'app.models/app.database).
-    from .routes_v10 import send_invoice_reminder, send_quote_reminder
+    from .services.reminders import send_invoice_reminder, send_quote_reminder
 
     now = datetime.now(timezone.utc)
     quotes_sent = 0
@@ -99,12 +99,22 @@ def _seconds_until_next_run() -> float:
 
 
 async def _reminder_scheduler_loop() -> None:
+    import os
+    from .rate_limit import release_scheduler_lock, try_acquire_scheduler_lock
+
+    holder = f"pid-{os.getpid()}"
     while True:
         try:
             delay = _seconds_until_next_run()
             logger.info("Prochaine vérification des relances automatiques dans %.0f minutes", delay / 60)
             await asyncio.sleep(delay)
-            run_due_reminders()
+            if not try_acquire_scheduler_lock("reminders", holder, ttl_seconds=600):
+                logger.info("Relances automatiques déjà en cours sur un autre worker — skip")
+                continue
+            try:
+                run_due_reminders()
+            finally:
+                release_scheduler_lock("reminders", holder)
         except asyncio.CancelledError:
             raise
         except Exception:

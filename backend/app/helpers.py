@@ -8,6 +8,7 @@ import io
 import logging
 import subprocess
 import tempfile
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from fastapi.responses import HTMLResponse, Response
@@ -15,6 +16,62 @@ from fastapi.responses import HTMLResponse, Response
 from .models import Intervention, Invoice, Quote
 
 logger = logging.getLogger(__name__)
+
+_MONEY_QUANTUM = Decimal("0.01")
+
+
+def to_money(value) -> Decimal:
+    """Convertit une valeur formulaire/float en Decimal monétaire (2 décimales)."""
+    if value is None:
+        return Decimal("0.00")
+    if isinstance(value, Decimal):
+        return value.quantize(_MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+    try:
+        return Decimal(str(value)).quantize(_MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal("0.00")
+
+
+def next_document_number(session, prefix: str, model, field_name: str) -> str:
+    """Génère un numéro unique journalier (DEV-YYYYMMDD-0001 / INV-YYYYMMDD-0001)."""
+    import re
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    pattern = f"{prefix}-{today}-%"
+    field = getattr(model, field_name)
+    existing = session.scalars(select(field).where(field.like(pattern))).all()
+    max_index = 0
+    for number in existing:
+        match = re.match(rf"^{prefix}-{today}-(\d{{4,}})$", str(number or ""))
+        if match:
+            max_index = max(max_index, int(match.group(1)))
+    return f"{prefix}-{today}-{max_index + 1:04d}"
+
+
+def allocate_document_number(session, prefix: str, model, field_name: str, build_row, *, max_attempts: int = 8):
+    """Alloue un numéro de document puis commit, avec retry sur collision UNIQUE."""
+    from fastapi import HTTPException
+    from sqlalchemy.exc import IntegrityError
+
+    last_exc: Exception | None = None
+    for _ in range(max_attempts):
+        number = next_document_number(session, prefix, model, field_name)
+        row = build_row(number)
+        session.add(row)
+        try:
+            session.commit()
+            return row
+        except IntegrityError as exc:
+            session.rollback()
+            last_exc = exc
+            continue
+    raise HTTPException(
+        status_code=409,
+        detail=f"Impossible d'allouer un numéro {prefix} unique après {max_attempts} tentatives",
+    ) from last_exc
 
 
 

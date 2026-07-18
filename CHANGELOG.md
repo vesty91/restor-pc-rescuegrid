@@ -1,5 +1,37 @@
 # Changelog
 
+## v12.5.1 — Durcissement technique (priorités revue qualité)
+
+- **IP réelle derrière reverse proxy** : `get_client_ip()` (deps.py) lit
+  `X-Forwarded-For` uniquement depuis un proxy de confiance.
+- **Python 3.12 uniquement** dans `install_dependencies.ps1` (recréation du
+  `.venv` si version incompatible).
+- **`start_dashboard.bat`** : plus de `pip install` à chaque démarrage ;
+  exécute `alembic upgrade head` puis uvicorn sur `127.0.0.1`.
+- **Chemins ZIP / storage** : `Path.is_relative_to()` à la place de
+  `startswith`.
+- **Upload ZIP** : écriture disque par blocs de 8 Mo (plus de lecture 2 Go en RAM).
+- **`docker-compose.dev.yml`** : secrets via `.env`, port lié à `127.0.0.1`.
+- **SQLite** : `PRAGMA foreign_keys=ON` ; sauvegarde via `Connection.backup()`.
+- **Alembic** : stamp `head` uniquement sur BDD vraiment vierge ; procédure
+  explicite pour bases existantes sans `alembic_version`.
+- **Déploiement NAS** : tests + migration **avant** bascule conteneur,
+  images taguées par hash Git, rollback auto si `/health` échoue.
+- **Montants** : `Numeric(12,2)` / `Decimal` (migration `0009_money_numeric`)
+  + `to_money()` / `allocate_document_number()` (retry sur collision UNIQUE).
+- **FK ON DELETE** explicites (migration `0008_fk_ondelete`).
+- **Version** unique via fichier `VERSION` (`app/version.py`, `/health`).
+- **Profils Docker** : `s3` (MinIO), `nginx`, `admin` (pgAdmin) — optionnels.
+- **Script** `scripts/make_release_zip.py` pour un ZIP de release propre.
+- **CSRF** : jetons double-submit (`csrf_token` cookie + champ/header) en
+  complément Origin/Referer ; formulaires login/2FA/espace client couverts.
+- **Rate-limit persistant** (migration `0010_rate_limit`) + verrous scheduler.
+- **Dashboard** : agrégats SQL (COUNT/SUM) au lieu de tout charger en mémoire.
+- **Découpage** : `routes_v10` → `routes/quotes|relances|settings_admin|
+  intervention_extras` + `services/mail|reminders|billing_defaults`.
+- **Qualité** : `pyproject.toml` (ruff/mypy/pytest) ; premiers tests pytest
+  unitaires (suite intégration `run_tests.py` conservée, 93/93).
+
 ## v12.5.0 — Double authentification admin, fiabilisation des sauvegardes, monitoring et déploiement continu
 
 - **Double authentification (2FA/TOTP) obligatoire pour le compte admin** :

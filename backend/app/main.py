@@ -48,7 +48,8 @@ from .database import get_session, init_db, SessionLocal
 from .helpers import apply_intervention_filters, generate_ai_summary, invoice_html, try_pdf_response
 from .models import Client, Intervention, Invoice, Machine, Part, Quote, Ticket, User
 from .routes_v10 import init_v10_routes
-from .deps import get_user_or_redirect
+from .deps import get_client_ip, get_user_or_redirect
+from .version import APP_VERSION
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -63,38 +64,26 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-LOGIN_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
 LOGIN_RATE_LIMIT_COUNT = int(os.getenv("LOGIN_RATE_LIMIT_COUNT", "5"))
 LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
-
-# Verrouillage de compte par nom d'utilisateur — en complément du rate limit par IP
-# ci-dessus. Une attaque par brute force distribuée (plusieurs IP, même compte) n'est
-# pas freinée par le seul rate limit IP : ce second compteur, indexé par identifiant,
-# verrouille le compte visé quelle que soit l'origine des tentatives.
-ACCOUNT_LOCKOUT_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
 ACCOUNT_LOCKOUT_COUNT = int(os.getenv("ACCOUNT_LOCKOUT_COUNT", "5"))
 ACCOUNT_LOCKOUT_WINDOW_SECONDS = int(os.getenv("ACCOUNT_LOCKOUT_WINDOW_SECONDS", "900"))
-
-# Anti brute-force sur les codes TOTP à 6 chiffres (espace bien plus restreint
-# qu'un mot de passe) — même principe que ACCOUNT_LOCKOUT_ATTEMPTS ci-dessus,
-# indexé par identifiant. Voir POST /2fa/verify et POST /2fa/setup.
-TWO_FA_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
 TWO_FA_ATTEMPT_COUNT = int(os.getenv("TWO_FA_ATTEMPT_COUNT", "8"))
 TWO_FA_ATTEMPT_WINDOW_SECONDS = int(os.getenv("TWO_FA_ATTEMPT_WINDOW_SECONDS", "300"))
 
 
 def _two_fa_rate_limited(username_key: str) -> bool:
-    import time
-    now = time.time()
-    attempts = TWO_FA_ATTEMPTS[username_key]
-    while attempts and now - attempts[0] > TWO_FA_ATTEMPT_WINDOW_SECONDS:
-        attempts.popleft()
-    return len(attempts) >= TWO_FA_ATTEMPT_COUNT
+    from .rate_limit import is_rate_limited
+    return is_rate_limited(
+        f"2fa:{username_key}",
+        max_count=TWO_FA_ATTEMPT_COUNT,
+        window_seconds=TWO_FA_ATTEMPT_WINDOW_SECONDS,
+    )
 
 
 def _record_two_fa_attempt(username_key: str) -> None:
-    import time
-    TWO_FA_ATTEMPTS[username_key].append(time.time())
+    from .rate_limit import record_hit
+    record_hit(f"2fa:{username_key}", window_seconds=TWO_FA_ATTEMPT_WINDOW_SECONDS)
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -134,7 +123,7 @@ def safe_extract_zip(archive_path: Path, destination: Path) -> None:
             if total_size > MAX_ZIP_UNCOMPRESSED_BYTES:
                 raise HTTPException(status_code=413, detail="Archive ZIP trop volumineuse après extraction")
             target_path = (destination / member.filename).resolve()
-            if not str(target_path).startswith(str(destination)):
+            if not target_path.is_relative_to(destination):
                 raise HTTPException(status_code=400, detail="Archive ZIP invalide : chemin dangereux détecté")
         archive.extractall(destination)
 
@@ -168,7 +157,7 @@ def risk_badge(level: str | None) -> dict:
 def _gb(value) -> str:
     try:
         return f"{float(value) / (1024 ** 3):.0f} Go"
-    except Exception:
+    except (TypeError, ValueError):
         return "-"
 
 
@@ -176,7 +165,7 @@ def _tb(value) -> str:
     try:
         tb = float(value) / (1024 ** 4)
         return f"{tb:.2f} To"
-    except Exception:
+    except (TypeError, ValueError):
         return "-"
 
 
@@ -245,8 +234,8 @@ def _hardware_from_inventory(inv: dict) -> dict:
         size = _pick(d, "Size", "size", "TotalSize", "Bytes")
         try:
             total += int(float(size or 0))
-        except Exception:
-            pass
+        except (TypeError, ValueError):
+            continue
         bus = str(_pick(d, "BusType", "bus", "InterfaceType") or "").lower()
         media = str(_pick(d, "MediaType", "type", "Model") or "").lower()
         if "nvme" in bus or "nvme" in media:
@@ -316,16 +305,15 @@ def today_date() -> str:
 
 
 def next_document_number(session: Session, prefix: str, model, field_name: str) -> str:
-    today = datetime.now(timezone.utc).strftime("%Y%m%d")
-    pattern = f"{prefix}-{today}-%"
-    field = getattr(model, field_name)
-    existing = session.scalars(select(field).where(field.like(pattern))).all()
-    max_index = 0
-    for number in existing:
-        match = re.match(rf"^{prefix}-{today}-(\d{{4,}})$", str(number or ""))
-        if match:
-            max_index = max(max_index, int(match.group(1)))
-    return f"{prefix}-{today}-{max_index + 1:04d}"
+    """Délègue à helpers.next_document_number (source unique)."""
+    from .helpers import next_document_number as _next
+    return _next(session, prefix, model, field_name)
+
+
+def allocate_document_number(session: Session, prefix: str, model, field_name: str, build_row, *, max_attempts: int = 8):
+    """Délègue à helpers.allocate_document_number (source unique)."""
+    from .helpers import allocate_document_number as _alloc
+    return _alloc(session, prefix, model, field_name, build_row, max_attempts=max_attempts)
 
 
 def intervention_url(intervention: Intervention) -> str:
@@ -341,46 +329,98 @@ def intervention_dir(intervention: Intervention) -> Path | None:
 
 
 def resolve_storage_path(relative_path: str) -> Path:
+    storage_root = STORAGE_DIR.resolve()
     target = (STORAGE_DIR / relative_path).resolve()
-    if not str(target).startswith(str(STORAGE_DIR.resolve())):
+    if not target.is_relative_to(storage_root):
         raise HTTPException(status_code=400, detail="Chemin invalide")
     return target
 
 
 def build_dashboard_context(request, session, user, q=None, status=None, sort=None) -> dict:
+    from sqlalchemy import func, or_
+
     if q:
         query = f"%{q}%"
-        clients = session.scalars(select(Client).where(Client.name.ilike(query)).order_by(Client.created_at.desc())).all()
+        clients = session.scalars(select(Client).where(Client.name.ilike(query)).order_by(Client.created_at.desc()).limit(50)).all()
         machines = session.scalars(select(Machine).where(
             (Machine.machine_name.ilike(query)) | (Machine.bios_serial.ilike(query))
-        ).order_by(Machine.last_intervention.desc().nulls_last())).all()
+        ).order_by(Machine.last_intervention.desc().nulls_last()).limit(50)).all()
         interventions = session.scalars(select(Intervention).where(
             (Intervention.title.ilike(query)) | (Intervention.machine_name.ilike(query)) |
             (Intervention.bios_serial.ilike(query))
-        ).order_by(Intervention.created_at.desc())).all()
-        invoices = session.scalars(select(Invoice).where(Invoice.invoice_number.ilike(query)).order_by(Invoice.created_at.desc())).all()
-        quotes = session.scalars(select(Quote).where(Quote.quote_number.ilike(query)).order_by(Quote.created_at.desc())).all()
+        ).order_by(Intervention.created_at.desc()).limit(50)).all()
+        invoices = session.scalars(select(Invoice).where(Invoice.invoice_number.ilike(query)).order_by(Invoice.created_at.desc()).limit(50)).all()
+        quotes = session.scalars(select(Quote).where(Quote.quote_number.ilike(query)).order_by(Quote.created_at.desc()).limit(50)).all()
         tickets = session.scalars(select(Ticket).where(
             (Ticket.title.ilike(query)) | (Ticket.status.ilike(query))
-        ).order_by(Ticket.created_at.desc())).all()
-        parts = []
+        ).order_by(Ticket.created_at.desc()).limit(50)).all()
+        parts: list = []
+        stats = {
+            "clients": len(clients),
+            "machines": len(machines),
+            "interventions": len(interventions),
+            "disk_critical": 0,
+            "disk_warning": 0,
+            "tickets_open": sum(1 for t in tickets if (t.status or "").lower() in {"open", "in_progress", "ouvert"}),
+            "monthly_revenue": 0.0,
+            "parts_stock": 0,
+            "best_score": max([i.health_score for i in interventions if i.health_score is not None] or [0]),
+        }
     else:
-        clients = session.scalars(select(Client).order_by(Client.created_at.desc())).all()
-        interventions = session.scalars(apply_intervention_filters(select(Intervention), status, sort)).all()
-        machines = session.scalars(select(Machine).order_by(Machine.last_intervention.desc().nulls_last())).all()
-        invoices = session.scalars(select(Invoice).order_by(Invoice.created_at.desc())).all()
-        quotes = session.scalars(select(Quote).order_by(Quote.created_at.desc())).all()
-        tickets = session.scalars(select(Ticket).order_by(Ticket.created_at.desc())).all()
-        parts = session.scalars(select(Part).order_by(Part.created_at.desc())).all()
+        # Listes affichées : limitées (pas toute la table).
+        interventions = session.scalars(apply_intervention_filters(select(Intervention), status, sort).limit(100)).all()
+        clients = session.scalars(select(Client).order_by(Client.created_at.desc()).limit(50)).all()
+        machines = session.scalars(select(Machine).order_by(Machine.last_intervention.desc().nulls_last()).limit(50)).all()
+        invoices = session.scalars(select(Invoice).order_by(Invoice.created_at.desc()).limit(50)).all()
+        quotes = session.scalars(select(Quote).order_by(Quote.created_at.desc()).limit(50)).all()
+        tickets = session.scalars(select(Ticket).order_by(Ticket.created_at.desc()).limit(50)).all()
+        parts = session.scalars(select(Part).order_by(Part.created_at.desc()).limit(50)).all()
+
+        # Stats globales en SQL (scalable à plusieurs milliers de lignes).
+        now = datetime.now(timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        critical_words = ("critical", "critique", "rouge", "noir", "urgent", "danger", "high")
+        warning_words = ("warning", "suspect", "orange", "moyen", "surveillance")
+        crit_filter = or_(*[
+            Intervention.disk_risk.ilike(f"%{w}%") for w in critical_words
+        ] + [
+            Intervention.data_loss_risk.ilike(f"%{w}%") for w in critical_words
+        ])
+        warn_filter = or_(*[
+            Intervention.disk_risk.ilike(f"%{w}%") for w in warning_words
+        ] + [
+            Intervention.data_loss_risk.ilike(f"%{w}%") for w in warning_words
+        ])
+        stats = {
+            "clients": session.scalar(select(func.count()).select_from(Client)) or 0,
+            "machines": session.scalar(select(func.count()).select_from(Machine)) or 0,
+            "interventions": session.scalar(select(func.count()).select_from(Intervention)) or 0,
+            "disk_critical": session.scalar(select(func.count()).select_from(Intervention).where(crit_filter)) or 0,
+            "disk_warning": session.scalar(select(func.count()).select_from(Intervention).where(warn_filter)) or 0,
+            "tickets_open": session.scalar(
+                select(func.count()).select_from(Ticket).where(
+                    Ticket.status.in_(["open", "in_progress", "ouvert"])
+                )
+            ) or 0,
+            "monthly_revenue": float(
+                session.scalar(
+                    select(func.coalesce(func.sum(Invoice.total), 0)).where(
+                        Invoice.created_at >= month_start,
+                        Invoice.status.in_(["paid", "payée"]),
+                    )
+                ) or 0
+            ),
+            "parts_stock": session.scalar(
+                select(func.coalesce(func.sum(Part.quantity), 0))
+            ) or 0,
+            "best_score": session.scalar(select(func.max(Intervention.health_score))) or 0,
+        }
 
     critical_words = ("critical", "critique", "rouge", "noir", "urgent", "danger", "high")
     warning_words = ("warning", "suspect", "orange", "moyen", "surveillance")
     disk_critical = [i for i in interventions if any(w in ((i.disk_risk or "") + " " + (i.data_loss_risk or "")).lower() for w in critical_words)]
     disk_warning = [i for i in interventions if any(w in ((i.disk_risk or "") + " " + (i.data_loss_risk or "")).lower() for w in warning_words)]
     open_tickets = [t for t in tickets if (t.status or "").lower() in {"open", "in_progress", "ouvert"}]
-    now = datetime.now(timezone.utc)
-    month_invoices = [i for i in invoices if i.created_at.year == now.year and i.created_at.month == now.month and (i.status or "").lower() in {"paid", "payée"}]
-    monthly_revenue = sum(float(i.total or 0) for i in month_invoices)
 
     alerts = []
     for item in disk_critical[:8]:
@@ -395,13 +435,7 @@ def build_dashboard_context(request, session, user, q=None, status=None, sort=No
         "logo_path": get_logo_path(),
         "clients": clients, "interventions": interventions, "machines": machines,
         "parts": parts, "invoices": invoices, "quotes": quotes, "tickets": tickets,
-        "stats": {
-            "clients": len(clients), "machines": len(machines), "interventions": len(interventions),
-            "disk_critical": len(disk_critical), "disk_warning": len(disk_warning),
-            "tickets_open": len(open_tickets), "monthly_revenue": monthly_revenue,
-            "parts_stock": sum(max(p.quantity or 0, 0) for p in parts),
-            "best_score": max([i.health_score for i in interventions if i.health_score is not None] or [0]),
-        },
+        "stats": stats,
         "alerts": alerts[:12],
         "recent_interventions": interventions[:10],
         "recent_tickets": tickets[:8],
@@ -417,11 +451,12 @@ def build_dashboard_context(request, session, user, q=None, status=None, sort=No
 
 # ── App FastAPI ───────────────────────────────────────────────────────────────
 
-logger.info("Démarrage Restor-PC RescueGrid v12.2")
+logger.info("Démarrage Restor-PC RescueGrid v%s", APP_VERSION)
 
-app = FastAPI(title="Restor-PC RescueGrid")
+app = FastAPI(title="Restor-PC RescueGrid", version=APP_VERSION)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates.env.globals["app_version"] = APP_VERSION
 
 
 def pagination_query(request: Request, page: int) -> str:
@@ -457,27 +492,20 @@ def overdue_count() -> int:
             ) or 0
             return int(n_quotes) + int(n_invoices)
     except Exception:
+        logger.debug("Impossible de calculer overdue_count", exc_info=True)
         return 0
 
 
 templates.env.globals["overdue_count"] = overdue_count
 
 
-# ── Protection anti-CSRF (vérification d'origine) ──────────────────────────────
-# L'authentification repose sur un cookie de session (JWT). Pour les requêtes de
-# mutation (POST/PUT/PATCH/DELETE) envoyées par un navigateur, on vérifie que
-# l'en-tête Origin (ou Referer en repli) correspond bien à l'hôte de l'application.
-# Une requête forgée depuis un autre site enverrait un Origin/Referer différent
-# et est donc rejetée, même si le cookie de session est automatiquement joint.
-#
-# /upload est exclu : il est appelé par l'agent Windows (script, pas un navigateur),
-# qui n'envoie ni Origin ni Referer, et dispose de sa propre protection
-# (authentification par session ou UPLOAD_API_KEY, voir verify_upload_access).
-# /stripe/webhook est exclu de la même façon : appelé serveur à serveur par
-# Stripe (pas de cookie de session, pas d'Origin/Referer), et protégé par sa
-# propre vérification de signature (voir stripe_payments.verify_and_handle_webhook).
-CSRF_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-CSRF_EXEMPT_PATHS = {"/upload", "/stripe/webhook"}
+# ── Protection anti-CSRF (jeton + Origin/Referer) ─────────────────────────────
+# Voir app/csrf.py : cookie double-submit + champ formulaire (ou en-tête
+# X-CSRF-Token). /upload et /stripe/webhook restent exemptés.
+from .csrf import CsrfProtectMiddleware, csrf_field_html
+
+app.add_middleware(CsrfProtectMiddleware)
+templates.env.globals["csrf_field"] = csrf_field_html
 
 
 # ── En-têtes de sécurité HTTP ───────────────────────────────────────────────
@@ -500,25 +528,6 @@ async def security_headers(request: Request, call_next):
     if COOKIE_SECURE:
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response
-
-
-@app.middleware("http")
-async def csrf_origin_guard(request: Request, call_next):
-    if request.method in CSRF_UNSAFE_METHODS and request.url.path not in CSRF_EXEMPT_PATHS:
-        source = request.headers.get("origin") or request.headers.get("referer")
-        if source:
-            source_host = urlparse(source).netloc
-            expected_host = request.headers.get("host", "")
-            if source_host and source_host != expected_host:
-                logger.warning(
-                    "Requête bloquée (origine invalide) : origin/referer=%s hôte attendu=%s chemin=%s",
-                    source_host, expected_host, request.url.path,
-                )
-                return JSONResponse(
-                    {"detail": "Requête refusée : origine invalide (protection anti-CSRF)."},
-                    status_code=403,
-                )
-    return await call_next(request)
 
 # Routers modulaires
 from .routes import clients as r_clients
@@ -587,26 +596,24 @@ async def login_post(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    import time
     from .auth import authenticate_user, create_access_token
+    from .rate_limit import clear_bucket, is_rate_limited, record_hit
+
     form = await request.form()
     username = str(form.get("username", "")).strip()
     password = str(form.get("password", ""))
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
+    username_key = username.lower()
+    ip_bucket = f"login_ip:{client_ip}"
+    acct_bucket = f"login_user:{username_key}"
 
-    now = time.time()
-    attempts = LOGIN_ATTEMPTS[client_ip]
-    while attempts and now - attempts[0] > LOGIN_RATE_LIMIT_WINDOW_SECONDS:
-        attempts.popleft()
-    if len(attempts) >= LOGIN_RATE_LIMIT_COUNT:
+    if is_rate_limited(ip_bucket, max_count=LOGIN_RATE_LIMIT_COUNT, window_seconds=LOGIN_RATE_LIMIT_WINDOW_SECONDS):
         logger.warning("Rate limit login dépassé pour IP %s", client_ip)
         return templates.TemplateResponse("login.html", {"request": request, "error": "Trop de tentatives. Réessayez dans 5 minutes."}, status_code=429)
 
-    username_key = username.lower()
-    account_attempts = ACCOUNT_LOCKOUT_ATTEMPTS[username_key]
-    while account_attempts and now - account_attempts[0] > ACCOUNT_LOCKOUT_WINDOW_SECONDS:
-        account_attempts.popleft()
-    if username_key and len(account_attempts) >= ACCOUNT_LOCKOUT_COUNT:
+    if username_key and is_rate_limited(
+        acct_bucket, max_count=ACCOUNT_LOCKOUT_COUNT, window_seconds=ACCOUNT_LOCKOUT_WINDOW_SECONDS
+    ):
         logger.warning("Compte verrouillé temporairement après échecs répétés : %s", username)
         return templates.TemplateResponse(
             "login.html",
@@ -616,14 +623,14 @@ async def login_post(
 
     user = authenticate_user(username, password, session)
     if not user:
-        attempts.append(now)
+        record_hit(ip_bucket, window_seconds=LOGIN_RATE_LIMIT_WINDOW_SECONDS)
         if username_key:
-            account_attempts.append(now)
+            record_hit(acct_bucket, window_seconds=ACCOUNT_LOCKOUT_WINDOW_SECONDS)
         logger.warning("Échec connexion pour %s depuis %s", username, client_ip)
         return templates.TemplateResponse("login.html", {"request": request, "error": "Identifiant ou mot de passe incorrect."})
 
-    LOGIN_ATTEMPTS.pop(client_ip, None)
-    ACCOUNT_LOCKOUT_ATTEMPTS.pop(username_key, None)
+    clear_bucket(ip_bucket)
+    clear_bucket(acct_bucket)
     logger.info("Mot de passe validé : %s depuis %s", username, client_ip)
     from .auth import COOKIE_SECURE, create_2fa_pending_token
 
@@ -813,7 +820,8 @@ async def two_fa_verify_confirm(request: Request, session: Session = Depends(get
             "2fa_verify.html", {"request": request, "error": "Code invalide."},
         )
 
-    TWO_FA_ATTEMPTS.pop(username_key, None)
+    from .rate_limit import clear_bucket
+    clear_bucket(f"2fa:{username_key}")
     logger.info("Connexion 2FA réussie : %s", username)
     return _finalize_login(username)
 
@@ -867,7 +875,7 @@ def api_stats(request: Request, session: Session = Depends(get_session)):
 
 @app.get("/health")
 def healthcheck():
-    return {"status": "ok", "version": "12.2"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 MAX_LOGO_BYTES = int(os.getenv("MAX_LOGO_BYTES", str(5 * 1024 * 1024)))
@@ -963,7 +971,7 @@ def backup_download(filename: str, request: Request, session: Session = Depends(
         raise HTTPException(status_code=400, detail="Nom de fichier invalide")
     target = (STORAGE_DIR / "backups" / safe_name).resolve()
     backups_dir = (STORAGE_DIR / "backups").resolve()
-    if not str(target).startswith(str(backups_dir)) or not target.exists():
+    if not target.is_relative_to(backups_dir) or not target.exists():
         raise HTTPException(status_code=404, detail="Sauvegarde introuvable")
 
     def iterfile():

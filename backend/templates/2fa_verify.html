@@ -51,6 +51,7 @@
       <div class="error">{{ error }}</div>
       {% endif %}
       <form method="post">
+        {{ csrf_field(request)|safe }}
         <label>Code à 6 chiffres (ou code de secours)</label>
         <input name="code" required autofocus inputmode="numeric" autocomplete="one-time-code">
         <button>Valider</button>

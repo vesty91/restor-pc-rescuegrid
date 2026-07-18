@@ -1,0 +1,27 @@
+[project]
+name = "restor-pc-rescuegrid"
+version = "12.5.1"
+description = "Restor-PC RescueGrid — atelier informatique"
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = ["alembic/versions", ".venv", "volumes", "storage"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true
+exclude = ["alembic/versions/", "tests/"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+python_files = ["test_*.py"]
+addopts = "-q --ignore=backend/tests/run_tests.py"

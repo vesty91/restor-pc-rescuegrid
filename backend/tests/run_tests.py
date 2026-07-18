@@ -1,4 +1,4 @@
-"""Tests d'intégration Restor-PC RescueGrid — exécution autonome."""
+﻿"""Tests d'intÃ©gration Restor-PC RescueGrid â€” exÃ©cution autonome."""
 from __future__ import annotations
 
 import io
@@ -18,7 +18,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 os.chdir(BACKEND_DIR)
 
-# Base de test isolée
+# Base de test isolÃ©e
 TEST_DB = BACKEND_DIR / "test_rescuegrid.db"
 if TEST_DB.exists():
     TEST_DB.unlink()
@@ -39,15 +39,53 @@ init_db()
 with SessionLocal() as _session:
     create_default_admin(_session)
 
-client = TestClient(app)
-results: list[tuple[str, bool, str]] = []
-ADMIN_TOTP_SECRET: str | None = None
-
-
 def record(name: str, ok: bool, detail: str = "") -> None:
     results.append((name, ok, detail))
     status = "PASS" if ok else "FAIL"
-    print(f"[{status}] {name}" + (f" — {detail}" if detail else ""))
+    print(f"[{status}] {name}" + (f" â€” {detail}" if detail else ""))
+
+
+def form(data: dict | None = None, *, c: TestClient | None = None) -> dict:
+    """Ajoute le jeton CSRF (cookie double-submit) aux donnÃ©es de formulaire."""
+    c = c or client
+    payload = dict(data or {})
+    token = c.cookies.get("csrf_token")
+    if not token:
+        c.get("/health")
+        token = c.cookies.get("csrf_token")
+    if token:
+        payload["csrf_token"] = token
+    return payload
+
+
+def make_client() -> TestClient:
+    """TestClient qui injecte automatiquement le jeton CSRF sur les POST formulaire."""
+    c = TestClient(app)
+    real_post = c.post
+
+    def post(url, data=None, json=None, **kwargs):
+        # Exemptés CSRF : uniquement /upload (agent) et webhooks Stripe — pas /upload-logo.
+        path = str(url).split("?", 1)[0]
+        if json is None and path != "/upload" and not path.startswith("/stripe/"):
+            token_data = form(dict(data or {}) if isinstance(data, dict) or data is None else {}, c=c)
+            token = token_data.get("csrf_token", "")
+            headers = dict(kwargs.pop("headers", None) or {})
+            if token:
+                headers["X-CSRF-Token"] = token
+            kwargs["headers"] = headers
+            if kwargs.get("files") is not None:
+                data = token_data
+            elif data is None or isinstance(data, dict):
+                data = token_data
+        return real_post(url, data=data, json=json, **kwargs)
+
+    c.post = post  # type: ignore[method-assign]
+    return c
+
+
+results: list[tuple[str, bool, str]] = []
+ADMIN_TOTP_SECRET: str | None = None
+client = make_client()
 
 
 def _extract_totp_secret(html: str) -> str | None:
@@ -56,20 +94,20 @@ def _extract_totp_secret(html: str) -> str | None:
 
 
 def login() -> None:
-    """Connexion admin de bout en bout, y compris le premier enrôlement 2FA
-    obligatoire (voir main.py POST /login, /2fa/setup) — l'admin de test créé
+    """Connexion admin de bout en bout, y compris le premier enrÃ´lement 2FA
+    obligatoire (voir main.py POST /login, /2fa/setup) â€” l'admin de test crÃ©Ã©
     par create_default_admin() n'a jamais encore de 2FA active."""
     global ADMIN_TOTP_SECRET
-    r = client.post("/login", data={"username": "admin", "password": "testadmin2026"}, follow_redirects=False)
+    r = client.post("/login", data=form({"username": "admin", "password": "testadmin2026"}), follow_redirects=False)
     if r.status_code == 303 and r.headers.get("location") == "/2fa/setup":
         setup_page = client.get("/2fa/setup")
         secret = _extract_totp_secret(setup_page.text)
         ADMIN_TOTP_SECRET = secret
         code = pyotp.TOTP(secret).now() if secret else ""
-        r2 = client.post("/2fa/setup", data={"code": code}, follow_redirects=False)
-        record("2FA enrôlement admin", r2.status_code == 200 and "codes de secours" in r2.text.lower(), f"status={r2.status_code}")
-        r3 = client.post("/2fa/setup/continue", follow_redirects=False)
-        record("login admin (après 2FA)", r3.status_code == 303 and "access_token" in r3.cookies, f"status={r3.status_code}")
+        r2 = client.post("/2fa/setup", data=form({"code": code}), follow_redirects=False)
+        record("2FA enrÃ´lement admin", r2.status_code == 200 and "codes de secours" in r2.text.lower(), f"status={r2.status_code}")
+        r3 = client.post("/2fa/setup/continue", data=form({}), follow_redirects=False)
+        record("login admin (aprÃ¨s 2FA)", r3.status_code == 303 and "access_token" in r3.cookies, f"status={r3.status_code}")
     else:
         record("login admin", r.status_code == 303 and "access_token" in r.cookies, f"status={r.status_code}")
 
@@ -85,25 +123,25 @@ def test_login_page() -> None:
 
 
 def test_dashboard_requires_auth() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.get("/", follow_redirects=False)
     record("GET / sans auth -> redirect login", r.status_code == 303 and r.headers.get("location") == "/login")
 
 
 def test_create_client_requires_auth() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.post("/clients", data={"name": "Hacker"}, follow_redirects=False)
     record("POST /clients sans auth -> redirect", r.status_code == 303 and r.headers.get("location") == "/login")
 
 
 def test_authenticated_dashboard() -> None:
     r = client.get("/")
-    record("GET / dashboard authentifié", r.status_code == 200 and "Restor-PC RescueGrid" in r.text)
+    record("GET / dashboard authentifiÃ©", r.status_code == 200 and "Restor-PC RescueGrid" in r.text)
 
 
 def test_create_client_authenticated() -> None:
     r = client.post("/clients", data={"name": "Client Test", "email": "test@example.com", "phone": "0600000000"}, follow_redirects=False)
-    record("POST /clients authentifié", r.status_code == 303)
+    record("POST /clients authentifiÃ©", r.status_code == 303)
 
 
 def test_search() -> None:
@@ -112,13 +150,13 @@ def test_search() -> None:
 
 
 def test_storage_requires_auth() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.get("/storage/reports/fake.html", follow_redirects=False)
     record("GET /storage sans auth -> redirect", r.status_code == 303)
 
 
 def test_export_requires_auth() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.get("/export/interventions.xlsx", follow_redirects=False)
     record("GET /export sans auth -> redirect", r.status_code == 303)
 
@@ -126,7 +164,7 @@ def test_export_requires_auth() -> None:
 def test_export_authenticated() -> None:
     r = client.get("/export/interventions.xlsx")
     record(
-        "GET /export authentifié",
+        "GET /export authentifiÃ©",
         r.status_code == 200 and "spreadsheetml" in r.headers.get("content-type", ""),
         r.headers.get("content-type", ""),
     )
@@ -179,14 +217,14 @@ def test_upload_zip_authenticated() -> None:
         files={"file": ("intervention_test.zip", buf, "application/zip")},
         follow_redirects=False,
     )
-    record("POST /upload ZIP authentifié", r.status_code == 303, f"status={r.status_code}")
+    record("POST /upload ZIP authentifiÃ©", r.status_code == 303, f"status={r.status_code}")
 
 
 def test_upload_metadata_from_inventory() -> None:
-    """/upload doit lire inventory.json (schéma réel produit par l'agent, voir
-    make_sample_zip) et pas un manifest.json inexistant — bug corrigé en v12.3
+    """/upload doit lire inventory.json (schÃ©ma rÃ©el produit par l'agent, voir
+    make_sample_zip) et pas un manifest.json inexistant â€” bug corrigÃ© en v12.3
     qui laissait bios_serial/health_score toujours vides et cassait la
-    déduplication des machines entre postes techniciens (mode multi-poste)."""
+    dÃ©duplication des machines entre postes techniciens (mode multi-poste)."""
     from app.database import SessionLocal
     from app.models import Intervention
     from sqlalchemy import select
@@ -196,7 +234,7 @@ def test_upload_metadata_from_inventory() -> None:
             select(Intervention).where(Intervention.title.contains("PC-TEST"))
         ).first()
     if not intervention:
-        record("Métadonnées upload (bios_serial/health_score)", False, "intervention introuvable")
+        record("MÃ©tadonnÃ©es upload (bios_serial/health_score)", False, "intervention introuvable")
         return
     ok = (
         intervention.bios_serial == "BIOS-TEST-123"
@@ -205,15 +243,15 @@ def test_upload_metadata_from_inventory() -> None:
         and intervention.data_loss_risk == "Faible"
     )
     record(
-        "Métadonnées upload (bios_serial/health_score depuis inventory.json)",
+        "MÃ©tadonnÃ©es upload (bios_serial/health_score depuis inventory.json)",
         ok,
         f"bios={intervention.bios_serial} score={intervention.health_score} disk_risk={intervention.disk_risk}",
     )
 
 
 def test_upload_zip_unauthenticated() -> None:
-    """Sans UPLOAD_API_KEY ni ALLOW_ANONYMOUS_UPLOAD, l'upload anonyme est refusé (sécurisé par défaut)."""
-    c = TestClient(app)
+    """Sans UPLOAD_API_KEY ni ALLOW_ANONYMOUS_UPLOAD, l'upload anonyme est refusÃ© (sÃ©curisÃ© par dÃ©faut)."""
+    c = make_client()
     buf = make_sample_zip()
     r = c.post(
         "/upload",
@@ -221,22 +259,22 @@ def test_upload_zip_unauthenticated() -> None:
         files={"file": ("intervention_anonyme.zip", buf, "application/zip")},
         follow_redirects=False,
     )
-    record("POST /upload sans auth -> refusé (401)", r.status_code == 401, f"status={r.status_code}")
+    record("POST /upload sans auth -> refusÃ© (401)", r.status_code == 401, f"status={r.status_code}")
 
 
 def test_upload_zip_anonymous_allowed_when_opted_in() -> None:
     """Avec ALLOW_ANONYMOUS_UPLOAD=true, l'upload anonyme reste possible (usage local/dev)."""
     os.environ["ALLOW_ANONYMOUS_UPLOAD"] = "true"
     try:
-        c = TestClient(app)
+        c = make_client()
         buf = make_sample_zip()
         r = c.post(
             "/upload",
-            data={"client_name": "Anonyme Autorisé"},
+            data={"client_name": "Anonyme AutorisÃ©"},
             files={"file": ("intervention_anonyme2.zip", buf, "application/zip")},
             follow_redirects=False,
         )
-        record("POST /upload anonyme avec opt-in -> autorisé (303)", r.status_code == 303, f"status={r.status_code}")
+        record("POST /upload anonyme avec opt-in -> autorisÃ© (303)", r.status_code == 303, f"status={r.status_code}")
     finally:
         os.environ.pop("ALLOW_ANONYMOUS_UPLOAD", None)
 
@@ -244,7 +282,7 @@ def test_upload_zip_anonymous_allowed_when_opted_in() -> None:
 def test_downloads_after_upload() -> None:
     r = client.get("/")
     if "Client ZIP Test" not in r.text:
-        record("Téléchargements intervention", False, "intervention importée introuvable")
+        record("TÃ©lÃ©chargements intervention", False, "intervention importÃ©e introuvable")
         return
     # Trouver l'intervention via la page
     from app.database import SessionLocal
@@ -258,7 +296,7 @@ def test_downloads_after_upload() -> None:
         if not intervention:
             intervention = session.scalars(select(Intervention).order_by(Intervention.id.desc())).first()
     if not intervention:
-        record("Téléchargements intervention", False, "aucune intervention en base")
+        record("TÃ©lÃ©chargements intervention", False, "aucune intervention en base")
         return
 
     iid = intervention.id
@@ -286,7 +324,7 @@ def test_delete_requires_admin() -> None:
 
 
 def test_invalid_login() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.post("/login", data={"username": "admin", "password": "wrongpassword"})
     record("login mot de passe invalide", r.status_code == 200 and "incorrect" in r.text.lower())
 
@@ -337,7 +375,7 @@ def test_comptabilite_page() -> None:
 
 
 def test_comptabilite_requires_admin() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.get("/comptabilite", follow_redirects=False)
     record("GET /comptabilite sans auth -> redirect", r.status_code == 303)
 
@@ -353,7 +391,7 @@ def test_export_comptable_xlsx() -> None:
 
 def test_backup_rotation_unit() -> None:
     """_rotate_backups doit conserver uniquement les BACKUP_RETENTION_COUNT
-    fichiers les plus récents (rescuegrid_*), quel que soit le moteur (SQLite/PG)."""
+    fichiers les plus rÃ©cents (rescuegrid_*), quel que soit le moteur (SQLite/PG)."""
     from app import backup as backup_module
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -380,24 +418,43 @@ def test_backup_rotation_unit() -> None:
 
 
 def test_backup_perform_and_rotate_sqlite() -> None:
-    """perform_backup_and_rotate doit copier le fichier SQLite et créer une
-    entrée listable par list_backups() — testé avec des dossiers isolés
-    (aucun impact sur la vraie base de développement)."""
+    """perform_backup_and_rotate doit copier le fichier SQLite et crÃ©er une
+    entrÃ©e listable par list_backups() â€” testÃ© avec des dossiers isolÃ©s
+    (aucun impact sur la vraie base de dÃ©veloppement)."""
+    import sqlite3
+
     from app import backup as backup_module
 
     with tempfile.TemporaryDirectory() as tmp:
         base_dir = Path(tmp)
         storage_dir = Path(tmp) / "storage"
         storage_dir.mkdir()
-        (base_dir / "rescuegrid.db").write_text("fake-sqlite-content")
+        db_path = base_dir / "rescuegrid.db"
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute("CREATE TABLE ping (id INTEGER PRIMARY KEY)")
+            conn.execute("INSERT INTO ping (id) VALUES (1)")
+            conn.commit()
+        finally:
+            conn.close()
         dest = backup_module.perform_backup_and_rotate(base_dir, storage_dir)
         backups = backup_module.list_backups(storage_dir)
-        ok = dest.exists() and dest.name.startswith("rescuegrid_") and len(backups) == 1
-        record("perform_backup_and_rotate (SQLite, dossiers isolés)", ok, str(dest))
+        verify = sqlite3.connect(dest)
+        try:
+            row = verify.execute("SELECT id FROM ping").fetchone()
+        finally:
+            verify.close()
+        ok = (
+            dest.exists()
+            and dest.name.startswith("rescuegrid_")
+            and len(backups) == 1
+            and row == (1,)
+        )
+        record("perform_backup_and_rotate (SQLite, dossiers isolÃ©s)", ok, str(dest))
 
 
 def test_backup_history_requires_admin() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.get("/backup/history", follow_redirects=False)
     record("GET /backup/history sans auth -> redirect", r.status_code == 303, f"status={r.status_code}")
 
@@ -412,15 +469,15 @@ def test_backup_history_page() -> None:
 
 
 def test_backup_run_requires_admin() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.post("/backup/run", follow_redirects=False)
     record("POST /backup/run sans auth -> redirect", r.status_code == 303, f"status={r.status_code}")
 
 
 def test_backup_run_manual() -> None:
-    """Le déclenchement manuel ne doit jamais planter (500), qu'il réussisse
-    (rescuegrid.db présent en local) ou échoue proprement avec un message
-    d'erreur (absent sur une machine de test fraîche)."""
+    """Le dÃ©clenchement manuel ne doit jamais planter (500), qu'il rÃ©ussisse
+    (rescuegrid.db prÃ©sent en local) ou Ã©choue proprement avec un message
+    d'erreur (absent sur une machine de test fraÃ®che)."""
     r = client.post("/backup/run", follow_redirects=False)
     ok = r.status_code == 303 and (r.headers.get("location") or "").startswith("/backup/history")
     record("POST /backup/run (admin)", ok, f"status={r.status_code} location={r.headers.get('location')}")
@@ -436,7 +493,7 @@ def test_planning_crud() -> None:
         "technician_id": "0",
         "start_at": start,
     }, follow_redirects=False)
-    record("POST /planning création RDV", r.status_code == 303, f"status={r.status_code}")
+    record("POST /planning crÃ©ation RDV", r.status_code == 303, f"status={r.status_code}")
 
     from app.database import SessionLocal
     from app.models import Appointment
@@ -446,7 +503,7 @@ def test_planning_crud() -> None:
             select(Appointment).where(Appointment.title == "RDV Test Planning").order_by(Appointment.id.desc())
         ).first()
     if not appointment:
-        record("GET /planning liste", False, "rendez-vous introuvable après création")
+        record("GET /planning liste", False, "rendez-vous introuvable aprÃ¨s crÃ©ation")
         return
     aid = appointment.id
 
@@ -461,7 +518,7 @@ def test_planning_crud() -> None:
 
 
 def test_planning_requires_auth() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.get("/planning", follow_redirects=False)
     record("GET /planning sans auth -> redirect", r.status_code == 303)
 
@@ -529,51 +586,51 @@ def test_client_portal_flow() -> None:
     r = client.post(f"/client/{client_id}/portal/enable", data={"email": "portail@example.com"}, follow_redirects=False)
     record("POST /client/{id}/portal/enable (admin)", r.status_code == 303, f"status={r.status_code}")
 
-    # Le mot de passe temporaire est envoyé par email (SMTP désactivé en test) :
+    # Le mot de passe temporaire est envoyÃ© par email (SMTP dÃ©sactivÃ© en test) :
     # on le fixe directement en base pour tester le flux de connexion complet.
     known_password = "PortailTest2026!"
     with SessionLocal() as session:
         account = session.scalars(select(ClientAccount).where(ClientAccount.client_id == client_id)).first()
         if not account:
-            record("ClientAccount créé", False, "aucun compte espace client créé")
+            record("ClientAccount crÃ©Ã©", False, "aucun compte espace client crÃ©Ã©")
             return
         account.hashed_password = hash_password(known_password)
         session.commit()
-    record("ClientAccount créé", True)
+    record("ClientAccount crÃ©Ã©", True)
 
     r = client.get("/client/login")
     record("GET /client/login", r.status_code == 200 and "Espace client" in r.text)
 
-    anon = TestClient(app)
+    anon = make_client()
     r = anon.post("/client/login", data={"email": "portail@example.com", "password": "wrong-password"})
     record("POST /client/login mot de passe invalide", r.status_code == 200 and "incorrect" in r.text.lower())
 
     r = anon.post("/client/login", data={"email": "portail@example.com", "password": known_password}, follow_redirects=False)
-    record("POST /client/login réussi", r.status_code == 303 and "client_token" in r.cookies, f"status={r.status_code}")
+    record("POST /client/login rÃ©ussi", r.status_code == 303 and "client_token" in r.cookies, f"status={r.status_code}")
 
     r = anon.get("/client/portal")
-    record("GET /client/portal authentifié", r.status_code == 200 and "Client Portail Test" in r.text, f"status={r.status_code}")
+    record("GET /client/portal authentifiÃ©", r.status_code == 200 and "Client Portail Test" in r.text, f"status={r.status_code}")
 
     r = client.post(f"/client/{client_id}/portal/disable", follow_redirects=False)
     record("POST /client/{id}/portal/disable (admin)", r.status_code == 303)
 
     r = anon.get("/client/portal", follow_redirects=False)
-    record("GET /client/portal après désactivation -> redirect login", r.status_code == 303 and r.headers.get("location") == "/client/login")
+    record("GET /client/portal aprÃ¨s dÃ©sactivation -> redirect login", r.status_code == 303 and r.headers.get("location") == "/client/login")
 
 
 def test_client_portal_requires_auth() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.get("/client/portal", follow_redirects=False)
     record("GET /client/portal sans auth -> redirect", r.status_code == 303 and r.headers.get("location") == "/client/login")
 
 
-# ── Tests revue de sécurité (auto-générés lors de la remédiation) ───────────
+# â”€â”€ Tests revue de sÃ©curitÃ© (auto-gÃ©nÃ©rÃ©s lors de la remÃ©diation) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _create_technician_and_login() -> "TestClient":
-    """Crée un compte technicien (role != admin) et retourne un client authentifié
-    en tant que ce compte — utilisé pour vérifier qu'un non-admin ne peut pas
-    accéder aux routes réservées à l'administrateur (contrairement à un test
-    "sans auth", qui ne distingue pas rôle insuffisant de absence de session)."""
+    """CrÃ©e un compte technicien (role != admin) et retourne un client authentifiÃ©
+    en tant que ce compte â€” utilisÃ© pour vÃ©rifier qu'un non-admin ne peut pas
+    accÃ©der aux routes rÃ©servÃ©es Ã  l'administrateur (contrairement Ã  un test
+    "sans auth", qui ne distingue pas rÃ´le insuffisant de absence de session)."""
     from app.auth import hash_password
     from app.database import SessionLocal
     from app.models import User
@@ -587,13 +644,13 @@ def _create_technician_and_login() -> "TestClient":
                 full_name="Technicien Test", role="technicien", email="tech1@rescuegrid.local",
             ))
             session.commit()
-    tech_client = TestClient(app)
+    tech_client = make_client()
     tech_client.post("/login", data={"username": "tech1", "password": "techpassword2026"})
     return tech_client
 
 
 def test_backup_database_requires_admin() -> None:
-    c = TestClient(app)
+    c = make_client()
     r = c.get("/backup/database", follow_redirects=False)
     record("GET /backup/database sans auth -> 401", r.status_code == 401, f"status={r.status_code}")
 
@@ -603,7 +660,7 @@ def test_backup_database_requires_admin() -> None:
 
     r = client.get("/backup/database", follow_redirects=False)
     record(
-        "GET /backup/database admin -> autorisé (200 ou 404 si SQLite absent)",
+        "GET /backup/database admin -> autorisÃ© (200 ou 404 si SQLite absent)",
         r.status_code in (200, 404),
         f"status={r.status_code}",
     )
@@ -613,13 +670,13 @@ def test_upload_logo_requires_admin() -> None:
     tech = _create_technician_and_login()
     fake_png = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
     r = tech.post("/upload-logo", files={"file": ("logo.png", fake_png, "image/png")}, follow_redirects=False)
-    record("POST /upload-logo technicien -> refusé (redirect /)", r.status_code == 303 and r.headers.get("location") == "/", f"status={r.status_code}")
+    record("POST /upload-logo technicien -> refusÃ© (redirect /)", r.status_code == 303 and r.headers.get("location") == "/", f"status={r.status_code}")
 
 
 def test_intervention_label_escapes_xss() -> None:
-    """Un nom de client contenant du HTML/JS ne doit jamais être injecté tel
-    quel dans l'étiquette imprimable (XSS stockée corrigée lors de la revue
-    de sécurité) : le nom doit apparaître échappé (&lt;script&gt;)."""
+    """Un nom de client contenant du HTML/JS ne doit jamais Ãªtre injectÃ© tel
+    quel dans l'Ã©tiquette imprimable (XSS stockÃ©e corrigÃ©e lors de la revue
+    de sÃ©curitÃ©) : le nom doit apparaÃ®tre Ã©chappÃ© (&lt;script&gt;)."""
     from app.database import SessionLocal
     from app.models import Client, Intervention
     from sqlalchemy import select
@@ -636,13 +693,13 @@ def test_intervention_label_escapes_xss() -> None:
 
     r = client.get(f"/intervention/{iid}/label")
     ok = r.status_code == 200 and "<script>alert(1)</script>" not in r.text and "&lt;script&gt;" in r.text
-    record("GET /intervention/{id}/label échappe le nom client (anti-XSS)", ok, f"status={r.status_code}")
+    record("GET /intervention/{id}/label Ã©chappe le nom client (anti-XSS)", ok, f"status={r.status_code}")
 
 
 def test_safe_extract_zip_rejects_symlink() -> None:
-    """Une entrée ZIP encodant un lien symbolique Unix doit être rejetée même
+    """Une entrÃ©e ZIP encodant un lien symbolique Unix doit Ãªtre rejetÃ©e mÃªme
     si son propre chemin dans l'archive est valide (variante Zip Slip via
-    symlink, corrigée lors de la revue de sécurité)."""
+    symlink, corrigÃ©e lors de la revue de sÃ©curitÃ©)."""
     import stat
     import zipfile as _zipfile
 
@@ -664,11 +721,15 @@ def test_upload_rate_limit() -> None:
     """Un enchaînement de tentatives /upload avec une mauvaise clé API doit
     finir par être bloqué (429), pour freiner le brute-force de UPLOAD_API_KEY."""
     from app.routes import interventions as interventions_module
+    from app.rate_limit import clear_bucket
 
     os.environ["UPLOAD_API_KEY"] = "correct-key-for-rate-limit-test"
-    interventions_module.UPLOAD_AUTH_FAILURES.clear()
+    clear_bucket("upload_auth:testclient")
+    # L'IP vue par TestClient est typiquement "testclient"
+    for ip in ("testclient", "127.0.0.1", "unknown"):
+        clear_bucket(f"upload_auth:{ip}")
     try:
-        c = TestClient(app)
+        c = make_client()
         last_status = None
         for _ in range(interventions_module.UPLOAD_RATE_LIMIT_COUNT + 2):
             buf = make_sample_zip()
@@ -682,12 +743,13 @@ def test_upload_rate_limit() -> None:
         record("POST /upload rate limit après échecs répétés -> 429", last_status == 429, f"status={last_status}")
     finally:
         os.environ.pop("UPLOAD_API_KEY", None)
-        interventions_module.UPLOAD_AUTH_FAILURES.clear()
+        for ip in ("testclient", "127.0.0.1", "unknown"):
+            clear_bucket(f"upload_auth:{ip}")
 
 
 def test_upload_rejects_non_zip_content() -> None:
-    """Un fichier renommé .zip mais dont le contenu n'est pas une archive ZIP
-    (signature magique absente) doit être rejeté (400) plutôt qu'extrait."""
+    """Un fichier renommÃ© .zip mais dont le contenu n'est pas une archive ZIP
+    (signature magique absente) doit Ãªtre rejetÃ© (400) plutÃ´t qu'extrait."""
     fake = io.BytesIO(b"ceci n'est pas un zip")
     r = client.post(
         "/upload",
@@ -705,19 +767,19 @@ def test_security_headers_present() -> None:
         and r.headers.get("X-Content-Type-Options") == "nosniff"
         and "Content-Security-Policy" in r.headers
     )
-    record("En-têtes de sécurité HTTP présents", ok, str(dict(r.headers)))
+    record("En-tÃªtes de sÃ©curitÃ© HTTP prÃ©sents", ok, str(dict(r.headers)))
 
 
 def test_cookie_not_secure_by_default() -> None:
-    """COOKIE_SECURE=false par défaut (dev local http://) : le cookie de
+    """COOKIE_SECURE=false par dÃ©faut (dev local http://) : le cookie de
     session ne doit pas porter l'attribut Secure, sans quoi aucun navigateur
-    ne le renverrait en http://localhost. Le compte admin étant enrôlé en 2FA
-    (voir login()), il faut compléter la vérification TOTP pour obtenir le
+    ne le renverrait en http://localhost. Le compte admin Ã©tant enrÃ´lÃ© en 2FA
+    (voir login()), il faut complÃ©ter la vÃ©rification TOTP pour obtenir le
     cookie access_token final."""
-    c = TestClient(app)
+    c = make_client()
     r = c.post("/login", data={"username": "admin", "password": "testadmin2026"}, follow_redirects=False)
     set_cookie = r.headers.get("set-cookie", "")
-    record("POST /login admin déjà enrôlé -> redirect /2fa/verify", r.status_code == 303 and r.headers.get("location") == "/2fa/verify")
+    record("POST /login admin dÃ©jÃ  enrÃ´lÃ© -> redirect /2fa/verify", r.status_code == 303 and r.headers.get("location") == "/2fa/verify")
     r2 = c.post("/2fa/verify", data={"code": pyotp.TOTP(ADMIN_TOTP_SECRET).now()}, follow_redirects=False)
     set_cookie = r2.headers.get("set-cookie", "")
     record(
@@ -729,12 +791,12 @@ def test_cookie_not_secure_by_default() -> None:
 
 def test_invoice_invalid_intervention_id() -> None:
     """POST /invoices avec un intervention_id inexistant doit renvoyer une
-    erreur claire (400) plutôt qu'un 500 (IntegrityError sous PostgreSQL)."""
+    erreur claire (400) plutÃ´t qu'un 500 (IntegrityError sous PostgreSQL)."""
     r = client.post("/invoices", data={"intervention_id": "999999", "amount": "50"}, follow_redirects=False)
     record("POST /invoices intervention_id invalide -> 400", r.status_code == 400, f"status={r.status_code}")
 
 
-# ── Tests Stripe (paiement en ligne) ────────────────────────────────────────
+# â”€â”€ Tests Stripe (paiement en ligne) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _create_test_invoice(notes: str, status: str = "issued") -> "int | None":
     from app.database import SessionLocal
@@ -763,21 +825,21 @@ def _create_test_invoice(notes: str, status: str = "issued") -> "int | None":
 
 
 def test_invoice_pdf_without_stripe_key() -> None:
-    """Sans STRIPE_SECRET_KEY (comportement par défaut), le PDF facture doit
-    continuer à se générer sans lien de paiement et sans jamais planter."""
+    """Sans STRIPE_SECRET_KEY (comportement par dÃ©faut), le PDF facture doit
+    continuer Ã  se gÃ©nÃ©rer sans lien de paiement et sans jamais planter."""
     invoice_id = _create_test_invoice("Facture test sans cle Stripe")
     if not invoice_id:
-        record("GET /invoice/{id}/pdf sans clé Stripe", False, "facture introuvable")
+        record("GET /invoice/{id}/pdf sans clÃ© Stripe", False, "facture introuvable")
         return
     r = client.get(f"/invoice/{invoice_id}/pdf")
     ok = r.status_code == 200 and "payer en ligne" not in r.text.lower()
-    record("GET /invoice/{id}/pdf sans clé Stripe -> pas de lien de paiement, pas de crash", ok, f"status={r.status_code}")
+    record("GET /invoice/{id}/pdf sans clÃ© Stripe -> pas de lien de paiement, pas de crash", ok, f"status={r.status_code}")
 
 
 def test_stripe_webhook_invalid_signature_rejected() -> None:
-    """Sans STRIPE_WEBHOOK_SECRET configuré (ou avec une signature invalide),
-    le webhook doit être rejeté (400) sans jamais modifier de facture."""
-    c = TestClient(app)
+    """Sans STRIPE_WEBHOOK_SECRET configurÃ© (ou avec une signature invalide),
+    le webhook doit Ãªtre rejetÃ© (400) sans jamais modifier de facture."""
+    c = make_client()
     r = c.post(
         "/stripe/webhook",
         content=b'{"type": "checkout.session.completed", "data": {"object": {"metadata": {}}}}',
@@ -787,9 +849,9 @@ def test_stripe_webhook_invalid_signature_rejected() -> None:
 
 
 def test_ensure_payment_link_skips_paid_invoice() -> None:
-    """ensure_payment_link ne doit jamais générer de lien pour une facture déjà
-    payée ou annulée, même si Stripe est configuré (aucun appel réseau requis
-    pour cette vérification : elle intervient avant toute création de Session)."""
+    """ensure_payment_link ne doit jamais gÃ©nÃ©rer de lien pour une facture dÃ©jÃ 
+    payÃ©e ou annulÃ©e, mÃªme si Stripe est configurÃ© (aucun appel rÃ©seau requis
+    pour cette vÃ©rification : elle intervient avant toute crÃ©ation de Session)."""
     from app import stripe_payments
     from app.database import SessionLocal
     from app.models import Invoice
@@ -804,19 +866,19 @@ def test_ensure_payment_link_skips_paid_invoice() -> None:
             session.add(invoice)
             session.commit()
             link = stripe_payments.ensure_payment_link(session, invoice)
-        record("ensure_payment_link ignore une facture payée", link is None, f"link={link}")
+        record("ensure_payment_link ignore une facture payÃ©e", link is None, f"link={link}")
     finally:
         stripe_payments.STRIPE_SECRET_KEY = original_key
 
 
 def test_ensure_payment_link_disabled_without_key() -> None:
     """Sans STRIPE_SECRET_KEY, ensure_payment_link retourne toujours None, quel
-    que soit le statut de la facture (comportement par défaut du projet)."""
+    que soit le statut de la facture (comportement par dÃ©faut du projet)."""
     from app import stripe_payments
     from app.database import SessionLocal
     from app.models import Invoice
 
-    record("stripe_enabled() est faux par défaut", stripe_payments.stripe_enabled() is False, f"key={stripe_payments.STRIPE_SECRET_KEY!r}")
+    record("stripe_enabled() est faux par dÃ©faut", stripe_payments.stripe_enabled() is False, f"key={stripe_payments.STRIPE_SECRET_KEY!r}")
     with SessionLocal() as session:
         invoice = Invoice(
             invoice_number="INV-TESTSTRIPE-0002", amount=10.0, tax=0.0, total=10.0, status="issued",
@@ -824,57 +886,57 @@ def test_ensure_payment_link_disabled_without_key() -> None:
         session.add(invoice)
         session.commit()
         link = stripe_payments.ensure_payment_link(session, invoice)
-    record("ensure_payment_link() sans clé -> None", link is None, f"link={link}")
+    record("ensure_payment_link() sans clÃ© -> None", link is None, f"link={link}")
 
 
-# ── Tests relances automatiques (scheduler) ─────────────────────────────────
+# â”€â”€ Tests relances automatiques (scheduler) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_reminder_scheduler_disabled_by_default() -> None:
     """Sans REMINDER_SCHEDULE_ENABLED=true, start_reminder_scheduler() ne doit
-    jamais démarrer de tâche de fond (relances 100% manuelles par défaut)."""
+    jamais dÃ©marrer de tÃ¢che de fond (relances 100% manuelles par dÃ©faut)."""
     from app import reminders_scheduler
 
     record(
-        "REMINDER_SCHEDULE_ENABLED désactivé par défaut",
+        "REMINDER_SCHEDULE_ENABLED dÃ©sactivÃ© par dÃ©faut",
         reminders_scheduler.REMINDER_SCHEDULE_ENABLED is False,
         f"enabled={reminders_scheduler.REMINDER_SCHEDULE_ENABLED}",
     )
     task = reminders_scheduler.start_reminder_scheduler()
-    record("start_reminder_scheduler() retourne None par défaut", task is None, f"task={task}")
+    record("start_reminder_scheduler() retourne None par dÃ©faut", task is None, f"task={task}")
 
 
 def test_reminder_cooldown_skips_recent() -> None:
-    """Un Reminder envoyé il y a 2 jours (< REMINDER_COOLDOWN_DAYS) doit
-    empêcher un nouveau renvoi automatique."""
+    """Un Reminder envoyÃ© il y a 2 jours (< REMINDER_COOLDOWN_DAYS) doit
+    empÃªcher un nouveau renvoi automatique."""
     from app import reminders_scheduler
     from datetime import datetime, timedelta, timezone
 
     recent = datetime.now(timezone.utc) - timedelta(days=2)
     ok = reminders_scheduler._is_in_cooldown(recent, reminders_scheduler.REMINDER_COOLDOWN_DAYS)
-    record("Cooldown relance : envoyé il y a 2j -> pas de renvoi (7j)", ok is True, f"in_cooldown={ok}")
+    record("Cooldown relance : envoyÃ© il y a 2j -> pas de renvoi (7j)", ok is True, f"in_cooldown={ok}")
 
 
 def test_reminder_cooldown_allows_after_delay() -> None:
-    """Un Reminder envoyé il y a 8 jours (> REMINDER_COOLDOWN_DAYS=7) doit
+    """Un Reminder envoyÃ© il y a 8 jours (> REMINDER_COOLDOWN_DAYS=7) doit
     autoriser un nouveau renvoi automatique."""
     from app import reminders_scheduler
     from datetime import datetime, timedelta, timezone
 
     old = datetime.now(timezone.utc) - timedelta(days=8)
     ok = reminders_scheduler._is_in_cooldown(old, reminders_scheduler.REMINDER_COOLDOWN_DAYS)
-    record("Cooldown relance : envoyé il y a 8j -> renvoi autorisé (7j)", ok is False, f"in_cooldown={ok}")
+    record("Cooldown relance : envoyÃ© il y a 8j -> renvoi autorisÃ© (7j)", ok is False, f"in_cooldown={ok}")
 
 
 def test_reminder_cooldown_no_previous_reminder() -> None:
-    """Sans relance préalable (last_sent_at=None), le cooldown ne doit jamais
+    """Sans relance prÃ©alable (last_sent_at=None), le cooldown ne doit jamais
     bloquer le premier envoi automatique."""
     from app import reminders_scheduler
 
     ok = reminders_scheduler._is_in_cooldown(None, reminders_scheduler.REMINDER_COOLDOWN_DAYS)
-    record("Cooldown relance : aucune relance précédente -> renvoi autorisé", ok is False, f"in_cooldown={ok}")
+    record("Cooldown relance : aucune relance prÃ©cÃ©dente -> renvoi autorisÃ©", ok is False, f"in_cooldown={ok}")
 
 
-# ── Tests 2FA (TOTP obligatoire pour le rôle admin) ─────────────────────────
+# â”€â”€ Tests 2FA (TOTP obligatoire pour le rÃ´le admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _create_second_admin() -> tuple[str, str]:
     from app.auth import hash_password
@@ -895,80 +957,80 @@ def _create_second_admin() -> tuple[str, str]:
 
 
 def test_2fa_forced_on_first_admin_login() -> None:
-    """Un compte admin sans 2FA active doit être redirigé vers /2fa/setup après
+    """Un compte admin sans 2FA active doit Ãªtre redirigÃ© vers /2fa/setup aprÃ¨s
     un mot de passe correct, sans jamais recevoir de cookie access_token."""
     username, password = _create_second_admin()
-    c = TestClient(app)
+    c = make_client()
     r = c.post("/login", data={"username": username, "password": password}, follow_redirects=False)
     record(
-        "Admin sans 2FA -> redirect /2fa/setup (pas d'accès direct)",
+        "Admin sans 2FA -> redirect /2fa/setup (pas d'accÃ¨s direct)",
         r.status_code == 303 and r.headers.get("location") == "/2fa/setup" and "access_token" not in r.cookies,
         f"status={r.status_code} location={r.headers.get('location')}",
     )
 
-    # Tant que le code n'est pas confirmé, aucune route protégée n'est accessible.
+    # Tant que le code n'est pas confirmÃ©, aucune route protÃ©gÃ©e n'est accessible.
     r2 = c.get("/", follow_redirects=False)
-    record("Accès dashboard bloqué pendant l'enrôlement 2FA en attente", r2.status_code == 303 and r2.headers.get("location") == "/login")
+    record("AccÃ¨s dashboard bloquÃ© pendant l'enrÃ´lement 2FA en attente", r2.status_code == 303 and r2.headers.get("location") == "/login")
 
 
 def test_2fa_setup_wrong_code_rejected() -> None:
     username, password = _create_second_admin()
-    c = TestClient(app)
+    c = make_client()
     c.post("/login", data={"username": username, "password": password}, follow_redirects=False)
     c.get("/2fa/setup")  # fige le secret dans le cookie pending_2fa (voir two_fa_setup_page)
     r = c.post("/2fa/setup", data={"code": "000000"}, follow_redirects=False)
-    record("Code TOTP invalide à l'enrôlement -> refusé", r.status_code == 200 and "invalide" in r.text.lower(), f"status={r.status_code}")
-    record("access_token toujours absent après code invalide", "access_token" not in r.cookies)
+    record("Code TOTP invalide Ã  l'enrÃ´lement -> refusÃ©", r.status_code == 200 and "invalide" in r.text.lower(), f"status={r.status_code}")
+    record("access_token toujours absent aprÃ¨s code invalide", "access_token" not in r.cookies)
 
 
 def test_2fa_full_enrollment_and_login_cycle() -> None:
-    """Enrôlement complet (code correct) puis nouvelle connexion (code TOTP
-    valide) et vérification qu'un code de secours n'est utilisable qu'une fois."""
+    """EnrÃ´lement complet (code correct) puis nouvelle connexion (code TOTP
+    valide) et vÃ©rification qu'un code de secours n'est utilisable qu'une fois."""
     username, password = _create_second_admin()
-    c = TestClient(app)
+    c = make_client()
     c.post("/login", data={"username": username, "password": password}, follow_redirects=False)
     setup_page = c.get("/2fa/setup")
     secret = _extract_totp_secret(setup_page.text)
-    record("Secret TOTP présent sur la page d'enrôlement", bool(secret))
+    record("Secret TOTP prÃ©sent sur la page d'enrÃ´lement", bool(secret))
 
     r = c.post("/2fa/setup", data={"code": pyotp.TOTP(secret).now()}, follow_redirects=False)
-    record("Code TOTP correct -> codes de secours affichés", r.status_code == 200 and "codes de secours" in r.text.lower(), f"status={r.status_code}")
+    record("Code TOTP correct -> codes de secours affichÃ©s", r.status_code == 200 and "codes de secours" in r.text.lower(), f"status={r.status_code}")
     recovery_codes = re.findall(r">([0-9A-F]{4}-[0-9A-F]{4})<", r.text)
-    record("8 codes de secours générés", len(recovery_codes) == 8, f"count={len(recovery_codes)}")
+    record("8 codes de secours gÃ©nÃ©rÃ©s", len(recovery_codes) == 8, f"count={len(recovery_codes)}")
 
     r2 = c.post("/2fa/setup/continue", follow_redirects=False)
-    record("Finalisation enrôlement -> access_token émis", r2.status_code == 303 and "access_token" in r2.cookies)
+    record("Finalisation enrÃ´lement -> access_token Ã©mis", r2.status_code == 303 and "access_token" in r2.cookies)
 
     # Nouvelle session : le prochain login doit demander /2fa/verify (plus /2fa/setup).
-    c2 = TestClient(app)
+    c2 = make_client()
     r3 = c2.post("/login", data={"username": username, "password": password}, follow_redirects=False)
-    record("Admin déjà enrôlé -> redirect /2fa/verify", r3.status_code == 303 and r3.headers.get("location") == "/2fa/verify")
+    record("Admin dÃ©jÃ  enrÃ´lÃ© -> redirect /2fa/verify", r3.status_code == 303 and r3.headers.get("location") == "/2fa/verify")
 
     r4 = c2.post("/2fa/verify", data={"code": "000000"}, follow_redirects=False)
-    record("Code TOTP invalide à la vérification -> refusé", "access_token" not in r4.cookies and "invalide" in r4.text.lower())
+    record("Code TOTP invalide Ã  la vÃ©rification -> refusÃ©", "access_token" not in r4.cookies and "invalide" in r4.text.lower())
 
     r5 = c2.post("/2fa/verify", data={"code": pyotp.TOTP(secret).now()}, follow_redirects=False)
-    record("Code TOTP correct à la vérification -> access_token émis", r5.status_code == 303 and "access_token" in r5.cookies)
+    record("Code TOTP correct Ã  la vÃ©rification -> access_token Ã©mis", r5.status_code == 303 and "access_token" in r5.cookies)
 
-    # Code de secours : utilisable une fois, puis rejeté à la seconde tentative.
-    c3 = TestClient(app)
+    # Code de secours : utilisable une fois, puis rejetÃ© Ã  la seconde tentative.
+    c3 = make_client()
     c3.post("/login", data={"username": username, "password": password}, follow_redirects=False)
     code_to_use = recovery_codes[0]
     r6 = c3.post("/2fa/verify", data={"code": code_to_use}, follow_redirects=False)
-    record("Code de secours valide -> access_token émis", r6.status_code == 303 and "access_token" in r6.cookies)
+    record("Code de secours valide -> access_token Ã©mis", r6.status_code == 303 and "access_token" in r6.cookies)
 
-    c4 = TestClient(app)
+    c4 = make_client()
     c4.post("/login", data={"username": username, "password": password}, follow_redirects=False)
     r7 = c4.post("/2fa/verify", data={"code": code_to_use}, follow_redirects=False)
-    record("Code de secours déjà utilisé -> refusé à la 2e tentative", "access_token" not in r7.cookies)
+    record("Code de secours dÃ©jÃ  utilisÃ© -> refusÃ© Ã  la 2e tentative", "access_token" not in r7.cookies)
 
 
 def test_2fa_not_required_for_technician() -> None:
-    """La 2FA n'est obligatoire que pour le rôle admin (voir choix utilisateur) :
-    un compte technicien reçoit directement son access_token."""
+    """La 2FA n'est obligatoire que pour le rÃ´le admin (voir choix utilisateur) :
+    un compte technicien reÃ§oit directement son access_token."""
     tech_client = _create_technician_and_login()
     r = tech_client.get("/", follow_redirects=False)
-    record("Technicien accède au dashboard sans 2FA", r.status_code == 200)
+    record("Technicien accÃ¨de au dashboard sans 2FA", r.status_code == 200)
 
 
 def main() -> int:
@@ -1013,7 +1075,7 @@ def main() -> int:
     test_delete_requires_admin()
     test_invalid_login()
 
-    # Revue de sécurité
+    # Revue de sÃ©curitÃ©
     test_backup_database_requires_admin()
     test_upload_logo_requires_admin()
     test_intervention_label_escapes_xss()
@@ -1036,9 +1098,9 @@ def main() -> int:
     test_reminder_cooldown_allows_after_delay()
     test_reminder_cooldown_no_previous_reminder()
 
-    # 2FA (TOTP obligatoire pour le rôle admin) — ordre important : ces tests
-    # partagent le même compte "admin2fa" et dépendent de son état 2FA au fil
-    # de l'exécution (non enrôlé -> refus de code -> enrôlement complet).
+    # 2FA (TOTP obligatoire pour le rÃ´le admin) â€” ordre important : ces tests
+    # partagent le mÃªme compte "admin2fa" et dÃ©pendent de son Ã©tat 2FA au fil
+    # de l'exÃ©cution (non enrÃ´lÃ© -> refus de code -> enrÃ´lement complet).
     test_2fa_forced_on_first_admin_login()
     test_2fa_setup_wrong_code_rejected()
     test_2fa_full_enrollment_and_login_cycle()
@@ -1046,14 +1108,15 @@ def main() -> int:
 
     passed = sum(1 for _, ok, _ in results if ok)
     failed = sum(1 for _, ok, _ in results if not ok)
-    print(f"\n=== Résultat: {passed} PASS, {failed} FAIL / {len(results)} tests ===")
+    print(f"\n=== RÃ©sultat: {passed} PASS, {failed} FAIL / {len(results)} tests ===")
     try:
         if TEST_DB.exists():
             TEST_DB.unlink()
     except PermissionError:
-        print(f"(info) base test non supprimée: {TEST_DB}")
+        print(f"(info) base test non supprimÃ©e: {TEST_DB}")
     return 0 if failed == 0 else 1
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

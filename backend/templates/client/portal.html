@@ -133,6 +133,7 @@
         <p style="color:var(--warning)">Mot de passe trop faible (10 caractères min., au moins une lettre et un chiffre).</p>
       {% endif %}
       <form method="post" action="/client/portal/change-password" style="display:grid;gap:10px;max-width:360px">
+        {{ csrf_field(request)|safe }}
         <input type="password" name="current_password" placeholder="Mot de passe actuel" required
           style="padding:10px;border-radius:8px;border:1px solid var(--line);background:#081426;color:var(--text)">
         <input type="password" name="new_password" placeholder="Nouveau mot de passe" required

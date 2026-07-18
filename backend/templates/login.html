@@ -51,7 +51,7 @@
   <div class="login-wrap">
     <div class="logo-area">
       <div class="logo-fallback">RESTOR-PC</div>
-      <div class="logo-sub">RescueGrid v12.1 — Atelier informatique</div>
+      <div class="logo-sub">RescueGrid v{{ app_version }} — Atelier informatique</div>
     </div>
     <div class="card">
       <h2>Connexion</h2>
@@ -60,6 +60,7 @@
       <div class="error">{{ error }}</div>
       {% endif %}
       <form method="post">
+        {{ csrf_field(request)|safe }}
         <label>Identifiant</label>
         <input name="username" required autofocus autocomplete="username">
         <label>Mot de passe</label>

@@ -3,8 +3,8 @@ routes/billing.py — Restor-PC RescueGrid v12.3
 ------------------------------------------------
 Factures : GET/POST /invoices, actions statut et suppression.
 
-NOTE : /quotes et ses actions sont dans routes_v10.py (avec log_activity, email, PDF).
-       Ce fichier gère uniquement les routes invoices absentes de routes_v10.
+NOTE : /quotes et actions email/paiement liées sont dans routes/quotes.py.
+       Ce fichier gère la liste/création des factures et l'export comptable.
 """
 from __future__ import annotations
 
@@ -23,20 +23,20 @@ from .. import stripe_payments
 from ..database import get_session
 from ..deps import get_user_or_redirect
 from ..auth import get_admin_or_redirect
-from ..helpers import _company_info, paginate_query
+from ..helpers import _company_info, allocate_document_number, paginate_query, to_money
 from ..models import Intervention, Invoice
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 _templates: Jinja2Templates | None = None
-_next_document_number = None
 _default_billing_amount = None
 
 
 def init_router(templates, next_doc_fn, billing_fn) -> APIRouter:
-    global _templates, _next_document_number, _default_billing_amount
+    # next_doc_fn conservé pour compatibilité d'appel depuis main.py (non utilisé
+    # ici : on importe allocate_document_number directement).
+    global _templates, _default_billing_amount
     _templates = templates
-    _next_document_number = next_doc_fn
     _default_billing_amount = billing_fn
     return router
 
@@ -88,27 +88,29 @@ def create_invoice(
         # cas possible avec un formulaire manipulé ou une intervention supprimée
         # entre le chargement du formulaire et la soumission.
         raise HTTPException(status_code=400, detail="Intervention introuvable pour cette facture")
-    number = _next_document_number(session, "INV", Invoice, "invoice_number")
+    money = to_money(amount)
     due = None
     if due_date:
         try:
             due = datetime.strptime(due_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         except ValueError:
             pass
-    invoice = Invoice(
-        intervention_id=intervention_id,
-        client_id=intervention.client_id if intervention else None,
-        invoice_number=number,
-        amount=amount,
-        tax=0.0,
-        total=round(amount, 2),
-        status=status,
-        due_date=due,
-        notes=notes.strip() or None,
-    )
-    session.add(invoice)
-    session.commit()
-    logger.info("Facture créée : %s par %s", number, user.username)
+
+    def build_row(number: str) -> Invoice:
+        return Invoice(
+            intervention_id=intervention_id,
+            client_id=intervention.client_id if intervention else None,
+            invoice_number=number,
+            amount=money,
+            tax=to_money(0),
+            total=money,
+            status=status,
+            due_date=due,
+            notes=notes.strip() or None,
+        )
+
+    invoice = allocate_document_number(session, "INV", Invoice, "invoice_number", build_row)
+    logger.info("Facture créée : %s par %s", invoice.invoice_number, user.username)
     return RedirectResponse("/invoices", status_code=303)
 
 

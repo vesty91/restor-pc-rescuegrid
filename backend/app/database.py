@@ -16,7 +16,7 @@ Commandes Alembic utiles (depuis le dossier backend/) :
 import logging
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,22 @@ engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
+if DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine, "connect")
+    def _sqlite_enable_foreign_keys(dbapi_connection, _connection_record) -> None:
+        """
+        SQLite n'applique PAS les contraintes de clé étrangère par défaut, même
+        si elles sont déclarées dans les modèles — il faut l'activer explicitement
+        à chaque nouvelle connexion (ce PRAGMA n'est pas persistant en base).
+        Sans ça, supprimer un client/une machine peut laisser des interventions,
+        devis ou factures orphelins au lieu d'être bloqué ou traité en cascade
+        (voir les relations ondelete définies dans models.py).
+        """
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -54,6 +70,7 @@ def init_db() -> None:
     manuellement via `alembic upgrade head` avant de démarrer l'application.
     """
     from . import models  # noqa: F401 — enregistre les modèles dans Base.metadata
+    from . import rate_limit  # noqa: F401 — rate_limit_hit + scheduler_lock
 
     if DATABASE_URL.startswith("sqlite"):
         _ensure_sqlite_tables_and_stamp()
@@ -66,45 +83,82 @@ def init_db() -> None:
 
 def _ensure_sqlite_tables_and_stamp() -> None:
     """
-    Pour SQLite en dev : crée les tables manquantes via SQLAlchemy (create_all),
-    puis stamp Alembic à 'head' pour que `alembic upgrade head` ne plante pas
-    sur une BDD déjà peuplée.
-
-    Cette logique est transparente : si les tables existent déjà et qu'Alembic
-    est déjà stampé, rien ne se passe.
+    Pour SQLite en dev :
+      - BDD réellement vierge (aucune table) : create_all() produit alors
+        exactement le schéma courant (colonnes ET contraintes définies dans
+        models.py), donc la stamper à 'head' est vrai — c'est le seul cas où
+        on le fait automatiquement.
+      - BDD existante mais sans alembic_version (ancien fichier .db créé avant
+        l'introduction d'Alembic, ou copie d'un ancien poste) : create_all()
+        ne fait qu'ajouter les tables manquantes, il n'ajoute JAMAIS de
+        colonnes à des tables déjà existantes. Stamper quand même à 'head'
+        dans ce cas mentirait sur l'état réel du schéma (Alembic croirait
+        toutes les migrations déjà appliquées alors que des colonnes comme
+        `user.totp_secret` ou `invoice.stripe_checkout_session_id` peuvent
+        manquer) — l'appli planterait plus tard avec des erreurs SQL confuses
+        ("no such column") sans qu'`alembic upgrade head` ne puisse jamais
+        les corriger (puisqu'il se croirait déjà à jour). On refuse donc de
+        démarrer et on affiche la procédure de conversion à suivre.
     """
+    import pathlib
+    from sqlalchemy import inspect
+
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    is_fresh_db = existing_tables == set() or existing_tables == {"alembic_version"}
+
     try:
         from alembic import command
         from alembic.config import Config
         from alembic.runtime.migration import MigrationContext
-        import pathlib
 
-        # Crée les tables si elles n'existent pas (première installation sans Alembic)
-        Base.metadata.create_all(engine)
-
-        # Vérifie si Alembic a déjà une révision courante
         with engine.connect() as conn:
             ctx = MigrationContext.configure(conn)
             current_rev = ctx.get_current_revision()
 
-        if current_rev is None:
-            # BDD nouvelle ou sans alembic_version → stamp à head
-            alembic_cfg_path = pathlib.Path(__file__).resolve().parent.parent / "alembic.ini"
-            if alembic_cfg_path.exists():
-                cfg = Config(str(alembic_cfg_path))
-                command.stamp(cfg, "head")
-                logger.info("Alembic stampé à 'head' (première initialisation).")
-            else:
-                logger.warning(
-                    "alembic.ini introuvable — les tables ont été créées via SQLAlchemy "
-                    "mais Alembic n'est pas configuré. Ajoutez alembic.ini pour gérer "
-                    "les migrations futures."
-                )
-        else:
+        if current_rev is not None:
             logger.debug("Alembic révision courante : %s", current_rev)
+            return
+
+        if not is_fresh_db:
+            raise RuntimeError(
+                "Base SQLite existante (tables: "
+                + ", ".join(sorted(existing_tables))
+                + ") mais sans révision Alembic connue — arrêt pour éviter un "
+                "stamp 'head' mensonger (voir database.py:_ensure_sqlite_tables_and_stamp). "
+                "Procédure de conversion : 1) sauvegardez le fichier .db actuel ; "
+                "2) déterminez la révision Alembic correspondant réellement au schéma "
+                "actuel (comparez les colonnes de vos tables à backend/alembic/versions/) ; "
+                "3) lancez `alembic stamp <revision_correspondante>` (PAS 'head') depuis "
+                "backend/ ; 4) relancez le serveur — les migrations manquantes "
+                "s'appliqueront alors normalement au prochain `alembic upgrade head`."
+            )
+
+        # BDD réellement vierge : create_all() produit le schéma complet et à
+        # jour, la stamper à 'head' est donc exact.
+        Base.metadata.create_all(engine)
+
+        alembic_cfg_path = pathlib.Path(__file__).resolve().parent.parent / "alembic.ini"
+        if alembic_cfg_path.exists():
+            cfg = Config(str(alembic_cfg_path))
+            command.stamp(cfg, "head")
+            logger.info("Alembic stampé à 'head' (première initialisation, BDD vierge).")
+        else:
+            logger.warning(
+                "alembic.ini introuvable — les tables ont été créées via SQLAlchemy "
+                "mais Alembic n'est pas configuré. Ajoutez alembic.ini pour gérer "
+                "les migrations futures."
+            )
 
     except ImportError:
-        # Alembic non installé : fallback silencieux sur create_all uniquement
+        # Alembic non installé : fallback sur create_all uniquement, seulement
+        # si la BDD est vierge (même raisonnement que ci-dessus).
+        if not is_fresh_db:
+            raise RuntimeError(
+                "Alembic non installé et base SQLite déjà existante — installez "
+                "Alembic (`pip install alembic`) pour permettre une conversion "
+                "sûre au lieu de risquer un schéma partiellement à jour."
+            )
         logger.warning(
             "Alembic non installé — utilisation de SQLAlchemy create_all() en fallback. "
             "Installez alembic pour gérer les migrations : pip install alembic"

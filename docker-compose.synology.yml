@@ -31,7 +31,9 @@ services:
       timeout: 5s
       retries: 5
 
-  # === MinIO (stockage S3 compatible) ===
+  # === MinIO (stockage S3 compatible) — profil optionnel `s3` ===
+  # Non utilisé actuellement par le backend (stockage fichier classique).
+  # Démarrer seulement si besoin : docker compose -f docker-compose.synology.yml --profile s3 up -d
   # Ports liés à 127.0.0.1 uniquement : MinIO est un outil d'administration du
   # stockage, pas un service à exposer publiquement. Accès distant via tunnel
   # SSH/VPN, ou retirer le bind 127.0.0.1 seulement si un pare-feu NAS filtre déjà
@@ -39,6 +41,7 @@ services:
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: rescuegrid_minio
+    profiles: ["s3"]
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -57,10 +60,14 @@ services:
       timeout: 10s
       retries: 3
 
-  # === Nginx Reverse Proxy ===
+  # === Nginx Reverse Proxy — profil optionnel `nginx` ===
+  # Sur Synology, le Reverse Proxy DSM est préféré (voir docs/SYNOLOGY_DEPLOY.md).
+  # Démarrer seulement si les ports 80/443 du NAS sont libres :
+  #   docker compose -f docker-compose.synology.yml --profile nginx up -d
   nginx:
     image: nginx:alpine
     container_name: rescuegrid_nginx
+    profiles: ["nginx"]
     restart: unless-stopped
     ports:
       - "80:80"
@@ -79,6 +86,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # Lu depuis le fichier VERSION à la racine par nas_auto_deploy.sh
+      # (export APP_VERSION avant `docker compose build`) — voir
+      # backend/app/version.py. Vide par défaut : le Dockerfile retombe alors
+      # sur "0.0.0-dev" pour un build manuel sans cette variable exportée.
+      args:
+        APP_VERSION: ${APP_VERSION:-}
     container_name: rescuegrid_backend
     restart: unless-stopped
     # Charge TOUTES les variables de .env (MAIL_*, SMTP_*, OAUTH_*, RESTORPC_*,
@@ -117,12 +130,14 @@ services:
       timeout: 10s
       retries: 3
 
-  # === Optionnel : pgAdmin (administration PostgreSQL) ===
+  # === Optionnel : pgAdmin — profil `admin` ===
+  # docker compose -f docker-compose.synology.yml --profile admin up -d
   # Port lié à 127.0.0.1 uniquement (voir remarque MinIO ci-dessus) : outil
   # d'administration, pas un service public.
   pgadmin:
     image: dpage/pgadmin4:9.16
     container_name: rescuegrid_pgadmin
+    profiles: ["admin"]
     restart: unless-stopped
     environment:
       # pgAdmin valide strictement le format de l'email et rejette les TLD
@@ -140,16 +155,9 @@ services:
       - rescuegrid
 
   # === Optionnel : Uptime Kuma (monitoring / alertes) ===
-  # Port exposé sur toutes les interfaces (donc joignable depuis le LAN à
-  # http://<IP-du-NAS>:3001) et non limité à 127.0.0.1 comme pgAdmin/MinIO
-  # ci-dessus : ce tableau de bord est destiné à une consultation régulière
-  # par l'exploitant, pas seulement à une administration ponctuelle. Reste
-  # inaccessible depuis internet tant que le port 3001 n'est pas redirigé sur
-  # le routeur (seul le port 443 l'est actuellement, voir docs/SYNOLOGY_DEPLOY.md).
-  # Le socket Docker est monté en lecture seule pour permettre le type de
-  # moniteur "Docker Container" (statut réel des conteneurs, pas seulement un
-  # ping HTTP) — c'est un niveau de confiance élevé accordé à cette seule
-  # image, mais Uptime Kuma est un projet mûr et largement utilisé en prod.
+  # Toujours démarré avec la stack (pas de profil) : déjà utilisé en production
+  # pour les alertes ntfy. Port exposé sur le LAN à http://<IP-du-NAS>:3001.
+  # Le socket Docker est monté en lecture seule pour le moniteur "Docker Container".
   uptime_kuma:
     image: louislam/uptime-kuma:2.4.0
     container_name: rescuegrid_uptime_kuma

@@ -320,7 +320,7 @@
 
     <div class="sidebar-footer">
       © 2026 <strong>RESTOR-PC</strong><br>
-      RescueGrid v12.1<br>
+      RescueGrid v{{ app_version }}<br>
       <span class="online">● En ligne</span><br><br>
       <a href="/logout" style="color:var(--muted);font-size:11px">Déconnexion</a>
     </div>
@@ -365,6 +365,26 @@
   document.addEventListener('click', () => {
     document.querySelectorAll('.action-dropdown.open').forEach(m => m.classList.remove('open'));
   });
+  (function(){
+    function getCookie(name){
+      var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : '';
+    }
+    function injectCsrf(){
+      var t = getCookie('csrf_token');
+      if(!t) return;
+      document.querySelectorAll('form').forEach(function(f){
+        var method = (f.getAttribute('method') || 'get').toLowerCase();
+        if(method !== 'post') return;
+        if(f.querySelector('input[name="csrf_token"]')) return;
+        var i = document.createElement('input');
+        i.type = 'hidden'; i.name = 'csrf_token'; i.value = t;
+        f.appendChild(i);
+      });
+    }
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', injectCsrf);
+    else injectCsrf();
+  })();
 </script>
 {% block extra_scripts %}{% endblock %}
 </body>

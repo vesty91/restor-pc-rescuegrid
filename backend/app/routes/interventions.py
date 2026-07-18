@@ -25,8 +25,6 @@ from __future__ import annotations
 import html
 import logging
 import os
-import time
-from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from io import BytesIO
@@ -39,16 +37,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_session
-from ..deps import get_user_or_redirect
+from ..deps import get_client_ip, get_user_or_redirect
 from ..auth import get_admin_or_redirect
 from ..helpers import apply_intervention_filters, generate_ai_summary, paginate_query
 from ..models import Client, Intervention, Machine, Part, Quote, Invoice
+from ..rate_limit import clear_bucket, is_rate_limited, record_hit
 
 logger = logging.getLogger(__name__)
 
-# Rate limit sur /upload (clé API statique) : freine le brute-force de la clé
-# d'import ZIP, sur le même principe que le rate limit /login (par IP).
-UPLOAD_AUTH_FAILURES: dict[str, deque[float]] = defaultdict(deque)
 UPLOAD_RATE_LIMIT_COUNT = int(os.getenv("UPLOAD_RATE_LIMIT_COUNT", "10"))
 UPLOAD_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("UPLOAD_RATE_LIMIT_WINDOW_SECONDS", "300"))
 
@@ -173,20 +169,21 @@ async def upload_intervention(
 ):
     from ..auth import verify_upload_access
 
-    client_ip = request.client.host if request.client else "unknown"
-    now = time.time()
-    failures = UPLOAD_AUTH_FAILURES[client_ip]
-    while failures and now - failures[0] > UPLOAD_RATE_LIMIT_WINDOW_SECONDS:
-        failures.popleft()
-    if len(failures) >= UPLOAD_RATE_LIMIT_COUNT:
+    client_ip = get_client_ip(request)
+    upload_bucket = f"upload_auth:{client_ip}"
+    if is_rate_limited(
+        upload_bucket,
+        max_count=UPLOAD_RATE_LIMIT_COUNT,
+        window_seconds=UPLOAD_RATE_LIMIT_WINDOW_SECONDS,
+    ):
         logger.warning("Rate limit /upload dépassé pour IP %s", client_ip)
         raise HTTPException(status_code=429, detail="Trop de tentatives d'import. Réessayez plus tard.")
 
     if not verify_upload_access(request, session, upload_key or None):
-        failures.append(now)
+        record_hit(upload_bucket, window_seconds=UPLOAD_RATE_LIMIT_WINDOW_SECONDS)
         logger.warning("Échec d'authentification /upload depuis %s", client_ip)
         raise HTTPException(status_code=401, detail="Authentification requise pour l'import ZIP")
-    UPLOAD_AUTH_FAILURES.pop(client_ip, None)
+    clear_bucket(upload_bucket)
 
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Archive ZIP requise")
@@ -195,16 +192,41 @@ async def upload_intervention(
     safe_file = _sanitize_filename(Path(file.filename).name)
     archive_path = _UPLOAD_DIR / f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{safe_name}_{safe_file}"
 
-    content = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Fichier trop volumineux")
-    if not any(content.startswith(sig) for sig in ZIP_MAGIC_BYTES):
-        raise HTTPException(status_code=400, detail="Contenu du fichier invalide : signature ZIP attendue")
+    # Écrit directement sur disque par blocs plutôt que de charger l'archive
+    # entière en RAM (jusqu'à MAX_UPLOAD_BYTES, 2 Go par défaut) : sur le NAS
+    # (peu de RAM), un import proche de la limite pouvait faire grossir le
+    # processus backend de plusieurs Go et risquer un OOM. La signature ZIP
+    # est vérifiée sur le tout premier bloc, avant même d'écrire quoi que ce
+    # soit, pour rejeter au plus vite un contenu non-ZIP.
+    UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024  # 8 Mo
+
     # Création défensive du dossier de destination : ne pas dépendre uniquement
     # de l'événement startup (peut ne pas s'être exécuté selon le contexte
     # d'exécution — tests, volume Docker monté vide, etc.).
     _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    archive_path.write_bytes(content)
+
+    total_written = 0
+    first_chunk_checked = False
+    try:
+        with open(archive_path, "wb") as out:
+            while True:
+                chunk = await file.read(UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                if not first_chunk_checked:
+                    if not any(chunk.startswith(sig) for sig in ZIP_MAGIC_BYTES):
+                        raise HTTPException(status_code=400, detail="Contenu du fichier invalide : signature ZIP attendue")
+                    first_chunk_checked = True
+                total_written += len(chunk)
+                if total_written > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Fichier trop volumineux")
+                out.write(chunk)
+    except HTTPException:
+        archive_path.unlink(missing_ok=True)
+        raise
+    if not first_chunk_checked:
+        archive_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="Fichier vide")
 
     import json
     dest_dir = _REPORT_DIR / archive_path.stem

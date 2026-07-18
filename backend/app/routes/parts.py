@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_session
@@ -84,5 +85,13 @@ def delete_part(part_id: int, request: Request, session: Session = Depends(get_s
     part = session.scalars(select(Part).where(Part.id == part_id)).first()
     if part:
         session.delete(part)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # Une pièce déjà utilisée dans une intervention (intervention_part)
+            # ne peut pas être supprimée (contrainte FK part_id, sans ondelete
+            # volontairement — voir models.py) : on l'indique clairement plutôt
+            # que de laisser remonter une erreur 500 brute.
+            session.rollback()
+            return RedirectResponse("/parts?error=part_in_use", status_code=303)
     return RedirectResponse("/parts", status_code=303)

@@ -3,7 +3,9 @@ backup.py — Restor-PC RescueGrid v12.3
 ---------------------------------------
 Sauvegarde planifiée de la base de données avec rotation.
 
-- SQLite (dev / petites installations) : copie simple du fichier .db.
+- SQLite (dev / petites installations) : copie cohérente via
+  sqlite3.Connection.backup() (évite une sauvegarde corrompue si la base
+  est en cours d'écriture pendant le backup).
 - PostgreSQL (Synology / prod) : dump via `pg_dump` (nécessite le paquet
   postgresql-client dans l'image Docker — voir backend/Dockerfile).
 
@@ -17,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import shutil
+import sqlite3
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -82,6 +84,19 @@ def _dump_postgres(destination: Path) -> None:
         raise RuntimeError(f"pg_dump a échoué : {result.stderr.strip()}")
 
 
+def _dump_sqlite(source: Path, destination: Path) -> None:
+    """Copie cohérente d'une base SQLite (API backup native, pas un shutil.copy2)."""
+    src = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
+    try:
+        dst = sqlite3.connect(destination)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+
 def perform_backup_and_rotate(base_dir: Path, storage_dir: Path) -> Path:
     """Effectue une sauvegarde immédiate puis applique la rotation. Retourne le fichier créé."""
     backups_dir = _backup_dir(storage_dir)
@@ -95,7 +110,7 @@ def perform_backup_and_rotate(base_dir: Path, storage_dir: Path) -> Path:
         if not source:
             raise FileNotFoundError("Base SQLite introuvable pour la sauvegarde")
         destination = backups_dir / f"{_PREFIX}{timestamp}.db"
-        shutil.copy2(source, destination)
+        _dump_sqlite(source, destination)
 
     logger.info("Sauvegarde créée : %s", destination.name)
     _rotate_backups(backups_dir)
@@ -184,7 +199,7 @@ def _send_backup_alert(error_message: str) -> None:
 
         # Import tardif : évite tout import circulaire au chargement du module
         # (routes_v10.py importe déjà des éléments d'app.models/app.database).
-        from .routes_v10 import _smtp_config
+        from .services.mail import smtp_config as _smtp_config
 
         cfg = _smtp_config()
         if not cfg["enabled"] or not cfg["password"]:
@@ -226,12 +241,22 @@ def _seconds_until_next_run() -> float:
 
 
 async def _backup_scheduler_loop(base_dir: Path, storage_dir: Path) -> None:
+    import os
+    from .rate_limit import release_scheduler_lock, try_acquire_scheduler_lock
+
+    holder = f"pid-{os.getpid()}"
     while True:
         try:
             delay = _seconds_until_next_run()
             logger.info("Prochaine sauvegarde planifiée dans %.0f minutes", delay / 60)
             await asyncio.sleep(delay)
-            perform_backup_and_rotate(base_dir, storage_dir)
+            if not try_acquire_scheduler_lock("backup", holder, ttl_seconds=600):
+                logger.info("Sauvegarde planifiée déjà en cours sur un autre worker — skip")
+                continue
+            try:
+                perform_backup_and_rotate(base_dir, storage_dir)
+            finally:
+                release_scheduler_lock("backup", holder)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
