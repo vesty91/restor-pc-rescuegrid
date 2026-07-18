@@ -218,7 +218,7 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
     username = payload.get("sub")
     if not username:
         return None
-    user = session.scalars(select(User).where(User.username == username, User.is_active == True)).first()
+    user = session.scalars(select(User).where(User.username == username, User.is_active)).first()
     return user
 
 
@@ -235,7 +235,7 @@ def require_admin(user: User = Depends(require_auth)) -> User:
 
 
 def authenticate_user(username: str, password: str, session: Session) -> Optional[User]:
-    user = session.scalars(select(User).where(User.username == username, User.is_active == True)).first()
+    user = session.scalars(select(User).where(User.username == username, User.is_active)).first()
     if not user or not verify_password(password, user.hashed_password):
         return None
     return user

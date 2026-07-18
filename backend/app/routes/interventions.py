@@ -40,7 +40,7 @@ from ..database import get_session
 from ..deps import get_client_ip, get_user_or_redirect
 from ..auth import get_admin_or_redirect
 from ..helpers import apply_intervention_filters, generate_ai_summary, paginate_query
-from ..models import Client, Intervention, Machine, Part, Quote, Invoice
+from ..models import Client, Intervention, Machine
 from ..rate_limit import clear_bucket, is_rate_limited, record_hit
 
 logger = logging.getLogger(__name__)

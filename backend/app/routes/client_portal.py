@@ -153,7 +153,7 @@ def client_oauth_callback(
     if not profile:
         return RedirectResponse("/client/login?error=oauth_failed", status_code=303)
 
-    account = session.scalars(select(ClientAccount).where(ClientAccount.email == profile.email, ClientAccount.is_active == True)).first()
+    account = session.scalars(select(ClientAccount).where(ClientAccount.email == profile.email, ClientAccount.is_active)).first()
     if not account:
         # Règle de sécurité : pas de création de compte à la volée. L'atelier doit
         # avoir déjà activé l'espace client pour cet email.
@@ -231,7 +231,7 @@ def client_change_password(
         return RedirectResponse("/client/portal?pwd=mismatch", status_code=303)
     error = validate_password_strength(new_password, account.email)
     if error:
-        return RedirectResponse(f"/client/portal?pwd=weak", status_code=303)
+        return RedirectResponse("/client/portal?pwd=weak", status_code=303)
     account.hashed_password = hash_password(new_password)
     session.commit()
     return RedirectResponse("/client/portal?pwd=ok", status_code=303)

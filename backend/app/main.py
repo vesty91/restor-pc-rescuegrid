@@ -24,17 +24,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
-import shutil
 import stat
-from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZipFile
 
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -45,7 +42,7 @@ from . import backup as backup_module
 from . import reminders_scheduler
 from . import stripe_payments
 from .database import get_session, init_db, SessionLocal
-from .helpers import apply_intervention_filters, generate_ai_summary, invoice_html, try_pdf_response
+from .helpers import apply_intervention_filters, invoice_html, try_pdf_response
 from .models import Client, Intervention, Invoice, Machine, Part, Quote, Ticket, User
 from .routes_v10 import init_v10_routes
 from .deps import get_client_ip, get_user_or_redirect

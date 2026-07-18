@@ -69,7 +69,7 @@ def planning_list(request: Request, range_filter: str = "week", page: int = 1, s
 
     clients = session.scalars(select(Client).order_by(Client.name)).all()
     interventions = session.scalars(select(Intervention).order_by(Intervention.created_at.desc())).all()
-    technicians = session.scalars(select(User).where(User.is_active == True).order_by(User.username)).all()
+    technicians = session.scalars(select(User).where(User.is_active).order_by(User.username)).all()
 
     return _templates.TemplateResponse("planning.html", {
         "request": request,

@@ -24,7 +24,8 @@ jobs:
           pip install ruff pytest
       - name: Ruff (lint rapide)
         working-directory: backend
-        run: ruff check app --select E,F --ignore E501
+        # E402 ignoré : imports différés volontaires dans main.py / models.py
+        run: ruff check app --select E,F --ignore E501,E402
       - name: Vérification des migrations SQLite
         working-directory: backend
         env:

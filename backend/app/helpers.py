@@ -148,7 +148,7 @@ def _client_signature_data_uri(intervention: Intervention | None) -> str:
                 data = base64.b64encode(signature_path.read_bytes()).decode("ascii")
                 return f"data:image/{mime};base64,{data}"
         except Exception as exc:
-            logger.warning("Lecture signature client impossible (%s): %s", candidate, exc)
+            logger.warning("Lecture signature client impossible (%s): %s", signature_path, exc)
             continue
     return ""
 
@@ -275,7 +275,9 @@ def document_html(
         "paid": "Payée",
         "cancelled": "Annulée",
     }
-    safe = lambda value: html.escape(str(value or ""))
+    def safe(value) -> str:
+        return html.escape(str(value or ""))
+
     def br(value: str) -> str:
         return safe(value).replace("\\n", "<br>")
     label_status = status_labels.get((status or "").lower(), status or "-")
