@@ -14,7 +14,7 @@ services:
     build:
       context: ./backend
       args:
-        APP_VERSION: ${APP_VERSION:-}
+        APP_VERSION: ${APP_VERSION:-0.0.0-dev}
     env_file:
       - .env
     ports:
@@ -23,7 +23,10 @@ services:
       DATABASE_URL: sqlite:///./rescuegrid.db
       SECRET_KEY: ${SECRET_KEY:?Definir SECRET_KEY dans .env (voir .env.example) - openssl rand -hex 32}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Definir ADMIN_PASSWORD dans .env (voir .env.example)}
+      APP_VERSION: ${APP_VERSION:-0.0.0-dev}
     volumes:
       - ./backend/storage:/app/storage
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"

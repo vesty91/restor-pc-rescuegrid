@@ -1,5 +1,17 @@
 # Changelog
 
+## v12.5.2 — Correctifs migrations SQLite / hygiène locale
+
+- **Migration `0008_fk_ondelete`** : `naming_convention` pour que SQLite
+  retrouve les FK sans nom (`intervention_client_id_fkey`, etc.).
+- **Modèle `Machine.notes`** aligné sur `0002_machine_notes`.
+- **Alembic `env.py`** importe `app.rate_limit` (autogenerate).
+- **`install_dependencies.ps1`** : contrôle `$LASTEXITCODE` après pip ;
+  dossiers `backend/storage`.
+- **`docker-compose.dev.yml`** : `alembic upgrade head` avant uvicorn.
+- **CI** : étape `alembic upgrade head` sur SQLite ; ruff non ignoré.
+- **Pins** : `psycopg[binary]==3.3.4`, `alembic==1.18.5`.
+
 ## v12.5.1 — Durcissement technique (priorités revue qualité)
 
 - **IP réelle derrière reverse proxy** : `get_client_ip()` (deps.py) lit

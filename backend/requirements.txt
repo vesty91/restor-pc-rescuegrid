@@ -8,12 +8,12 @@ python-jose[cryptography]==3.3.0
 bcrypt==4.2.0
 openpyxl==3.1.5
 
-psycopg[binary]>=3.2.10
+psycopg[binary]==3.3.4
 
 xhtml2pdf==0.2.16
 
 python-dotenv==1.0.1
-alembic>=1.13.0
+alembic==1.18.5
 stripe==11.4.1
 pyotp==2.9.0
 qrcode==8.0

@@ -45,6 +45,8 @@ class Machine(Base):
     machine_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     manufacturer: Mapped[str | None] = mapped_column(String(255), nullable=True)
     model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Aligné sur migration 0002_machine_notes (String(1000)).
+    notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     last_intervention: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

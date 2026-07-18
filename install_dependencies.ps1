@@ -109,8 +109,16 @@ $requirementsPath = Join-Path $backendDir "requirements.txt"
 
 if ((Test-Path $pythonVenvPath) -and (Test-Path $requirementsPath)) {
     try {
+        # PowerShell n'élève pas automatiquement un exit code pip non nul :
+        # sans contrôle de $LASTEXITCODE, le script affichait "OK" après un échec.
         & $pythonVenvPath -m pip install --upgrade pip | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Echec de la mise a jour de pip (code $LASTEXITCODE)."
+        }
         & $pythonVenvPath -m pip install -q -r $requirementsPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Echec de l'installation des dependances (code $LASTEXITCODE)."
+        }
         Write-Host " OK" -ForegroundColor Green
     }
     catch {
@@ -141,7 +149,7 @@ else {
     Write-Host " MANQUANTS : $($missing -join ', ')" -ForegroundColor Yellow
 }
 
-# === 5. Creer dossiers storage ===
+# === 5. Creer dossiers storage (chemin utilise par l'app : backend/storage) ===
 Write-Host "[5/5] Dossiers de stockage..." -NoNewline
 $storageDirs = @(
     "storage",
@@ -149,7 +157,7 @@ $storageDirs = @(
     "storage\reports"
 )
 foreach ($dir in $storageDirs) {
-    $fullPath = Join-Path $rootDir $dir
+    $fullPath = Join-Path $backendDir $dir
     if (-not (Test-Path $fullPath)) {
         New-Item -ItemType Directory -Path $fullPath -Force | Out-Null
     }

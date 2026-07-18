@@ -61,9 +61,20 @@ _CASCADE_FKS = [
     ("intervention_part_intervention_id_fkey", "intervention_part", "intervention_id", "intervention", "id"),
 ]
 
+# SQLite crée souvent les FK sans nom explicite. Sans cette convention, Alembic
+# batch ne retrouve pas `intervention_client_id_fkey` et lève
+# ValueError: No such constraint (base neuve locale / CI).
+_NAMING_CONVENTION = {
+    "fk": "%(table_name)s_%(column_0_name)s_fkey",
+}
+
 
 def _recreate_fk(name: str, table: str, column: str, ref_table: str, ref_column: str, ondelete: str) -> None:
-    with op.batch_alter_table(table, schema=None) as batch_op:
+    with op.batch_alter_table(
+        table,
+        schema=None,
+        naming_convention=_NAMING_CONVENTION,
+    ) as batch_op:
         batch_op.drop_constraint(name, type_="foreignkey")
         batch_op.create_foreign_key(name, ref_table, [column], [ref_column], ondelete=ondelete)
 

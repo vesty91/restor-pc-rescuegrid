@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import Base  # noqa: E402
 import app.models  # noqa: E402, F401 — importe tous les modèles pour que Base.metadata les connaisse
+import app.rate_limit  # noqa: E402, F401 — tables rate_limit_hit / scheduler_lock (hors models.py)
 
 # Objet de configuration Alembic (chargé depuis alembic.ini)
 config = context.config
