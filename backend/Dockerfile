@@ -3,12 +3,22 @@ FROM python:3.12-slim-bookworm
 # Injectée au build (voir docker-compose.synology.yml / nas_auto_deploy.sh) car
 # le contexte de build est limité à backend/ : le fichier VERSION à la racine
 # du projet n'est pas accessible en COPY depuis ici (voir app/version.py).
+# Injectée au build (voir docker-compose.synology.yml). Ne jamais laisser
+# l'ENV final vide : un ARG explicitement "" (compose `${APP_VERSION:-}`)
+# écrase le défaut Dockerfile et faisait planter FastAPI/OpenAPI.
 ARG APP_VERSION=0.0.0-dev
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    STORAGE_PATH=/app/storage \
-    APP_VERSION=${APP_VERSION}
+    STORAGE_PATH=/app/storage
+
+# Coalesce + bake dans une ENV non vide (Docker ne permet pas ${VAR:-def} ici).
+RUN VER="$APP_VERSION"; \
+    if [ -z "$VER" ]; then VER="0.0.0-dev"; fi; \
+    printf '%s' "$VER" > /etc/rescuegrid_version
+# Valeur de secours ; la valeur réelle est réinjectée au runtime via compose
+# (environment.APP_VERSION) et lue aussi depuis /etc/rescuegrid_version.
+ENV APP_VERSION=0.0.0-dev
 
 WORKDIR /app
 

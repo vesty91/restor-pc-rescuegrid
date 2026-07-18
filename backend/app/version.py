@@ -21,7 +21,18 @@ def _read_version() -> str:
             return text
     except OSError:
         pass
-    return os.getenv("APP_VERSION", "0.0.0-dev")
+    # Attention : ARG/ENV Docker vide ("") ne déclenche PAS la valeur par défaut
+    # de os.getenv(key, default) — il faut traiter "" comme absent.
+    env = (os.getenv("APP_VERSION") or "").strip()
+    if env:
+        return env
+    try:
+        baked = Path("/etc/rescuegrid_version").read_text(encoding="utf-8").strip()
+        if baked:
+            return baked
+    except OSError:
+        pass
+    return "0.0.0-dev"
 
 
 APP_VERSION: str = _read_version()

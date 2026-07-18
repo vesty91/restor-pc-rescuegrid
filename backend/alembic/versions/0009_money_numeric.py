@@ -31,22 +31,45 @@ _COLUMNS = [
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    is_pg = bind.dialect.name == "postgresql"
     for table, column in _COLUMNS:
-        with op.batch_alter_table(table, schema=None) as batch_op:
-            batch_op.alter_column(
-                column,
-                existing_type=sa.Float(),
-                type_=_MONEY,
-                existing_nullable=False,
+        if is_pg:
+            # PostgreSQL exige souvent USING pour FLOAT -> NUMERIC.
+            op.execute(
+                sa.text(
+                    f'ALTER TABLE "{table}" '
+                    f'ALTER COLUMN "{column}" TYPE NUMERIC(12, 2) '
+                    f'USING "{column}"::numeric(12, 2)'
+                )
             )
+        else:
+            with op.batch_alter_table(table, schema=None) as batch_op:
+                batch_op.alter_column(
+                    column,
+                    existing_type=sa.Float(),
+                    type_=_MONEY,
+                    existing_nullable=False,
+                )
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    is_pg = bind.dialect.name == "postgresql"
     for table, column in _COLUMNS:
-        with op.batch_alter_table(table, schema=None) as batch_op:
-            batch_op.alter_column(
-                column,
-                existing_type=_MONEY,
-                type_=sa.Float(),
-                existing_nullable=False,
+        if is_pg:
+            op.execute(
+                sa.text(
+                    f'ALTER TABLE "{table}" '
+                    f'ALTER COLUMN "{column}" TYPE DOUBLE PRECISION '
+                    f'USING "{column}"::double precision'
+                )
             )
+        else:
+            with op.batch_alter_table(table, schema=None) as batch_op:
+                batch_op.alter_column(
+                    column,
+                    existing_type=_MONEY,
+                    type_=sa.Float(),
+                    existing_nullable=False,
+                )

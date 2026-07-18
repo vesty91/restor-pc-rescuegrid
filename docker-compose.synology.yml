@@ -91,7 +91,7 @@ services:
       # backend/app/version.py. Vide par défaut : le Dockerfile retombe alors
       # sur "0.0.0-dev" pour un build manuel sans cette variable exportée.
       args:
-        APP_VERSION: ${APP_VERSION:-}
+        APP_VERSION: ${APP_VERSION:-0.0.0-dev}
     container_name: rescuegrid_backend
     restart: unless-stopped
     # Charge TOUTES les variables de .env (MAIL_*, SMTP_*, OAUTH_*, RESTORPC_*,
@@ -104,6 +104,10 @@ services:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-rescuegrid}:${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD dans .env}@postgres:5432/${POSTGRES_DB:-rescuegrid}"
       SECRET_KEY: "${SECRET_KEY:?Definir SECRET_KEY dans .env, ex. openssl rand -hex 32}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Definir ADMIN_PASSWORD dans .env (mot de passe fort et unique)}"
+      # Surcharge runtime : un ARG Docker vide ("") écrase le défaut Dockerfile
+      # et faisait planter FastAPI (version OpenAPI vide). Toujours fournir une
+      # valeur non vide ici, même si le build a échoué à injecter VERSION.
+      APP_VERSION: "${APP_VERSION:-12.5.1}"
       # false par defaut pour ne pas casser la connexion tant que HTTPS n'est pas
       # configure sur nginx (etape 5 de docs/SYNOLOGY_DEPLOY.md) — passer a true
       # dans .env une fois un certificat TLS actif.
