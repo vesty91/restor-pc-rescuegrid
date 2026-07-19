@@ -2,12 +2,13 @@
 .SYNOPSIS
     Restor-PC RescueGrid - WinPE Atelier
 .DESCRIPTION
-    Menu interactif pour WinPE : diagnostic, sauvegarde, analyse SMART, réparation boot,
-    export rapport, réinstallation. Conçu pour tourner depuis une clé USB WinPE.
+    Menu interactif pour WinPE : diagnostic, sauvegarde, analyse SMART, reparation boot,
+    export rapport, reinstallation. Concu pour tourner depuis une cle USB WinPE.
+    Sous Windows live : interface graphique (-Gui, defaut via Start-RescueGrid.cmd).
 .NOTES
     Auteur : Restor-PC RescueGrid
-    Version : 1.0
-    Lancement : powershell -ExecutionPolicy Bypass -File Start-RescueGrid.ps1
+    Version : 1.1
+    Lancement : powershell -STA -ExecutionPolicy Bypass -File Start-RescueGrid.ps1 -Gui
 #>
 
 param(
@@ -15,14 +16,19 @@ param(
     [string]$RescueGridAgent = "$PSScriptRoot\Invoke-RescueGrid.ps1",
     [string]$DashboardUploadUrl,
     [string]$UploadApiKey,
-    [string]$RescueGridEnvPath
+    [string]$RescueGridEnvPath,
+    # Interface graphique (WinForms). Recommande sous Windows live.
+    [switch]$Gui,
+    # Force le menu texte (WinPE / depannage).
+    [switch]$Console
 )
 
 $ErrorActionPreference = "Continue"
 $host.UI.RawUI.WindowTitle = "Restor-PC RescueGrid - WinPE Atelier"
+$script:RescueGridGuiMode = $false
 
 function Import-RescueGridEnv {
-    <# Voir Invoke-RescueGrid.ps1 pour le detail : charge rescuegrid.env (clé USB
+    <# Voir Invoke-RescueGrid.ps1 pour le detail : charge rescuegrid.env (cle USB
        ou dossier du script) et retourne un hashtable des variables RESCUEGRID_*. #>
     param([string]$ExplicitPath)
 
@@ -44,7 +50,7 @@ function Import-RescueGridEnv {
                         $result[$parts[0].Trim()] = $parts[1].Trim()
                     }
                 }
-                Write-Host "[CONFIG] rescuegrid.env chargé : $path" -ForegroundColor DarkGray
+                Write-Host "[CONFIG] rescuegrid.env charge : $path" -ForegroundColor DarkGray
                 return $result
             } catch {
                 Write-Host "[CONFIG] Lecture impossible de $path : $_" -ForegroundColor Yellow
@@ -89,7 +95,7 @@ function Test-IsWinPE {
 }
 
 function Find-AllWindowsInstallations {
-    # PSCustomObject (pas [ordered]) pour éviter que PowerShell énumère les clés
+    # PSCustomObject (pas [ordered]) pour eviter que PowerShell enumere les cles
     # au return et affiche 4 lignes vides pour 1 Windows.
     $windowsList = [System.Collections.Generic.List[object]]::new()
     Get-Volume | Where-Object { $_.DriveLetter -and $_.DriveLetter -ne 'X' } | ForEach-Object {
@@ -106,6 +112,11 @@ function Find-AllWindowsInstallations {
     return , @($windowsList.ToArray())
 }
 
+$GuiHelpersPath = Join-Path $PSScriptRoot "RescueGrid.GuiHelpers.ps1"
+if (Test-Path -LiteralPath $GuiHelpersPath) {
+    . $GuiHelpersPath
+}
+
 function Show-Menu {
     param([string]$Title)
     Clear-Host
@@ -118,19 +129,158 @@ function Show-Menu {
     Write-Host ""
 }
 
-# Vérifier si l'agent est présent
+# Verifier si l'agent est present
 if (-not (Test-Path -LiteralPath $RescueGridAgent)) {
-    Write-Host "[AVERTISSEMENT] Invoke-RescueGrid.ps1 introuvable à : $RescueGridAgent" -ForegroundColor Yellow
-    Write-Host "[INFO] Le diagnostic avance utilisera l'agent s'il est trouvé." -ForegroundColor Gray
+    Write-Host "[AVERTISSEMENT] Invoke-RescueGrid.ps1 introuvable a : $RescueGridAgent" -ForegroundColor Yellow
+    Write-Host "[INFO] Le diagnostic avance utilisera l'agent s'il est trouve." -ForegroundColor Gray
 }
 
 # ===== FONCTIONS =====
 
+function Read-ClientFicheInfoGui {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Fiche client - Restor-PC"
+    $form.Size = New-Object System.Drawing.Size(520, 620)
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.BackColor = [System.Drawing.Color]::FromArgb(8, 20, 38)
+    $form.ForeColor = [System.Drawing.Color]::White
+    $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $form.Padding = New-Object System.Windows.Forms.Padding(24)
+
+    $y = 16
+    $logoPath = Join-Path $PSScriptRoot "assets\restorpc_logo.png"
+    if (Test-Path -LiteralPath $logoPath) {
+        $pic = New-Object System.Windows.Forms.PictureBox
+        $pic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+        $pic.Location = New-Object System.Drawing.Point(28, $y)
+        $pic.Size = New-Object System.Drawing.Size(160, 56)
+        $pic.Image = [System.Drawing.Image]::FromFile($logoPath)
+        $form.Controls.Add($pic)
+        $hdr = New-Object System.Windows.Forms.Label
+        $hdr.Text = "Fiche client"
+        $hdr.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+        $hdr.ForeColor = [System.Drawing.Color]::FromArgb(0, 163, 255)
+        $hdr.Location = New-Object System.Drawing.Point(210, 28)
+        $hdr.Size = New-Object System.Drawing.Size(260, 32)
+        $form.Controls.Add($hdr)
+        $y = 88
+    } else {
+        $hdr = New-Object System.Windows.Forms.Label
+        $hdr.Text = "Fiche client"
+        $hdr.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+        $hdr.ForeColor = [System.Drawing.Color]::FromArgb(0, 163, 255)
+        $hdr.Location = New-Object System.Drawing.Point(28, $y)
+        $hdr.Size = New-Object System.Drawing.Size(440, 28)
+        $form.Controls.Add($hdr)
+        $y = 56
+    }
+
+    $hint = New-Object System.Windows.Forms.Label
+    $hint.Text = "Renseigne les infos client pour le dashboard et les emails."
+    $hint.ForeColor = [System.Drawing.Color]::FromArgb(147, 169, 197)
+    $hint.Location = New-Object System.Drawing.Point(28, $y)
+    $hint.Size = New-Object System.Drawing.Size(450, 22)
+    $form.Controls.Add($hint)
+    $y = $y + 36
+
+    $fieldDefs = @(
+        @{ Key = "Name"; Label = "Nom du client *" },
+        @{ Key = "Email"; Label = "Email (recommande)" },
+        @{ Key = "Phone"; Label = "Telephone" },
+        @{ Key = "Address"; Label = "Adresse" },
+        @{ Key = "Contact"; Label = "Contact (interlocuteur)" }
+    )
+    $boxes = @{}
+    foreach ($f in $fieldDefs) {
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Text = $f.Label
+        $lbl.Location = New-Object System.Drawing.Point(28, $y)
+        $lbl.Size = New-Object System.Drawing.Size(450, 22)
+        $form.Controls.Add($lbl)
+        $y = $y + 26
+
+        $tb = New-Object System.Windows.Forms.TextBox
+        $tb.Location = New-Object System.Drawing.Point(28, $y)
+        $tb.Size = New-Object System.Drawing.Size(450, 32)
+        $tb.Font = New-Object System.Drawing.Font("Segoe UI", 11)
+        $tb.BackColor = [System.Drawing.Color]::FromArgb(13, 30, 52)
+        $tb.ForeColor = [System.Drawing.Color]::White
+        $tb.BorderStyle = "FixedSingle"
+        $form.Controls.Add($tb)
+        $boxes[$f.Key] = $tb
+        $y = $y + 48
+    }
+
+    $chkMail = New-Object System.Windows.Forms.CheckBox
+    $chkMail.Text = "Envoyer le rapport par mail a la fin"
+    $chkMail.Location = New-Object System.Drawing.Point(28, $y)
+    $chkMail.Size = New-Object System.Drawing.Size(450, 28)
+    $chkMail.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
+    $form.Controls.Add($chkMail)
+    $y = $y + 44
+
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = "Continuer"
+    $ok.Location = New-Object System.Drawing.Point(248, $y)
+    $ok.Size = New-Object System.Drawing.Size(120, 38)
+    $ok.BackColor = [System.Drawing.Color]::FromArgb(10, 132, 255)
+    $ok.ForeColor = [System.Drawing.Color]::White
+    $ok.FlatStyle = "Flat"
+    $ok.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $form.Controls.Add($ok)
+    $form.AcceptButton = $ok
+
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = "Annuler"
+    $cancel.Location = New-Object System.Drawing.Point(378, $y)
+    $cancel.Size = New-Object System.Drawing.Size(100, 38)
+    $cancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $form.Controls.Add($cancel)
+    $form.CancelButton = $cancel
+
+    $needed = $y + 90
+    if ($form.ClientSize.Height -lt $needed) {
+        $form.ClientSize = New-Object System.Drawing.Size(504, $needed)
+    }
+
+    $result = $form.ShowDialog()
+    if ($pic -and $pic.Image) { $pic.Image.Dispose() }
+    if ($result -ne [System.Windows.Forms.DialogResult]::OK) { return $null }
+    if ([string]::IsNullOrWhiteSpace($boxes.Name.Text)) {
+        [System.Windows.Forms.MessageBox]::Show("Le nom du client est obligatoire.", "Restor-PC") | Out-Null
+        return Read-ClientFicheInfoGui
+    }
+    if ([string]::IsNullOrWhiteSpace($boxes.Email.Text)) {
+        $r = [System.Windows.Forms.MessageBox]::Show(
+            "Sans email : pas denvoi auto (rapport, RDV, devis). Continuer ?",
+            "Email recommande",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        )
+        if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return Read-ClientFicheInfoGui }
+    }
+    return [pscustomobject]@{
+        Name       = $boxes.Name.Text.Trim()
+        Email      = $boxes.Email.Text.Trim()
+        Phone      = $boxes.Phone.Text.Trim()
+        Address    = $boxes.Address.Text.Trim()
+        Contact    = $boxes.Contact.Text.Trim()
+        SendReport = [bool]$chkMail.Checked
+    }
+}
+
 function Read-ClientFicheInfo {
     <#
-      Saisie fiche client après le nom : email / tel / adresse / contact.
-      Entrée = champ ignoré. Si email renseigné, propose l'envoi du rapport.
+      Saisie fiche client apres le nom : email / tel / adresse / contact.
+      Mode GUI si RescueGridGuiMode, sinon invite console.
     #>
+    if ($script:RescueGridGuiMode) {
+        return Read-ClientFicheInfoGui
+    }
     Write-Host ""
     Write-Host "--- Fiche client (Entree = passer) ---" -ForegroundColor Cyan
     $name = Read-Host "Nom du client"
@@ -138,9 +288,9 @@ function Read-ClientFicheInfo {
         Write-Host "Le nom est obligatoire." -ForegroundColor Yellow
         $name = Read-Host "Nom du client"
     }
-    $email = (Read-Host "Email (recommande — devis, factures, RDV)").Trim()
+    $email = (Read-Host "Email (recommande - devis, factures, RDV)").Trim()
     if (-not $email) {
-        Write-Host "[ATTENTION] Sans email : pas d'envoi auto (rapport, RDV, devis)." -ForegroundColor Yellow
+        Write-Host "[ATTENTION] Sans email : pas denvoi auto (rapport, RDV, devis)." -ForegroundColor Yellow
         $cont = Read-Host "Continuer sans email ? (O/N)"
         if ($cont -ne "O" -and $cont -ne "o") {
             $email = (Read-Host "Email").Trim()
@@ -182,6 +332,7 @@ function Invoke-Diagnostic {
     Show-Menu "Diagnostic complet"
     
     $fiche = Read-ClientFicheInfo
+    if (-not $fiche) { return }
     
     # Chercher Windows offline
     $offlinePath = ""
@@ -191,12 +342,17 @@ function Invoke-Diagnostic {
         Write-Host "[INFO] Windows detecte : $offlinePath" -ForegroundColor Green
     }
     elseif ($windowsList.Count -gt 1) {
-        Write-Host "Windows disponibles :"
-        for ($i = 0; $i -lt $windowsList.Count; $i++) {
-            Write-Host "  $($i+1). $($windowsList[$i].windows_path)"
+        if ($script:RescueGridGuiMode -and (Get-Command Select-WindowsInstallGui -ErrorAction SilentlyContinue)) {
+            $offlinePath = Select-WindowsInstallGui -WindowsList $windowsList
+            if (-not $offlinePath) { return }
+        } else {
+            Write-Host "Windows disponibles :"
+            for ($i = 0; $i -lt $windowsList.Count; $i++) {
+                Write-Host "  $($i+1). $($windowsList[$i].windows_path)"
+            }
+            $idx = Read-Host "Choisir (1-$($windowsList.Count))"
+            $offlinePath = $windowsList[[int]$idx - 1].windows_path
         }
-        $idx = Read-Host "Choisir (1-$($windowsList.Count))"
-        $offlinePath = $windowsList[[int]$idx - 1].windows_path
     }
     
     if (Test-Path -LiteralPath $RescueGridAgent) {
@@ -214,7 +370,28 @@ function Invoke-Diagnostic {
         }
         if ($DashboardUploadUrl) { $params.Add("-DashboardUploadUrl") | Out-Null; $params.Add($DashboardUploadUrl) | Out-Null }
         if ($UploadApiKey) { $params.Add("-UploadApiKey") | Out-Null; $params.Add($UploadApiKey) | Out-Null }
-        powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
+
+        if ($script:RescueGridGuiMode -and (Get-Command Invoke-AgentWithProgress -ErrorAction SilentlyContinue)) {
+            [void](Invoke-AgentWithProgress -AgentPath $RescueGridAgent -AgentParams $params -Title "Diagnostic en cours...")
+        } else {
+            powershell -ExecutionPolicy Bypass -File $RescueGridAgent @params
+        }
+
+        # Signature client en fin d'intervention (GUI)
+        if ($script:RescueGridGuiMode -and (Get-Command Show-ClientSignaturePad -ErrorAction SilentlyContinue)) {
+            $latest = Get-LatestInterventionFolder -BackupRoot $BackupRoot
+            if ($latest) {
+                $sigPath = Join-Path $latest.FullName "signature_client.png"
+                $saved = Show-ClientSignaturePad -OutPath $sigPath
+                if ($saved) {
+                    $zipPath = "$($latest.FullName).zip"
+                    if (Test-Path $zipPath) {
+                        [void](Add-FileToZip -ZipPath $zipPath -FilePath $saved -EntryName "signature_client.png")
+                    }
+                    Write-Host "[OK] Signature enregistree : $saved" -ForegroundColor Green
+                }
+            }
+        }
     }
     else {
         Write-Host "[MODE DEGRADE] Diagnostic sans agent..." -ForegroundColor Yellow
@@ -231,6 +408,7 @@ function Invoke-Backup {
     Show-Menu "Sauvegarde utilisateur"
     
     $fiche = Read-ClientFicheInfo
+    if (-not $fiche) { return }
     
     # Chercher les profils utilisateurs
     $windowsList = @(Find-AllWindowsInstallations)
@@ -358,6 +536,7 @@ function Invoke-Report {
     Show-Menu "Export rapport seul"
     
     $fiche = Read-ClientFicheInfo
+    if (-not $fiche) { return }
     
     if (Test-Path -LiteralPath $RescueGridAgent) {
         $params = [System.Collections.ArrayList]@("-BackupRoot", $BackupRoot, "-CreateZip")
@@ -397,6 +576,7 @@ function Invoke-Offline {
     Show-Menu "Analyse Windows hors ligne"
     
     $fiche = Read-ClientFicheInfo
+    if (-not $fiche) { return }
     $windowsList = @(Find-AllWindowsInstallations)
     
     if ($windowsList.Count -eq 0) {
@@ -506,7 +686,140 @@ function Invoke-SystemCheck {
     Pause
 }
 
-# Menu principal
+function Show-RescueGridGui {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Restor-PC RescueGrid"
+    $form.Size = New-Object System.Drawing.Size(540, 860)
+    $form.MinimumSize = New-Object System.Drawing.Size(520, 680)
+    $form.StartPosition = "CenterScreen"
+    $form.BackColor = [System.Drawing.Color]::FromArgb(4, 11, 20)
+    $form.ForeColor = [System.Drawing.Color]::FromArgb(238, 247, 255)
+    $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $form.AutoScroll = $true
+
+    $y = 12
+    $logoCandidates = @(
+        (Join-Path $PSScriptRoot "assets\restorpc_logo.png"),
+        (Join-Path $PSScriptRoot "..\..\assets\restorpc_logo.png"),
+        (Join-Path $PSScriptRoot "restorpc_logo.png")
+    )
+    $logoPath = $logoCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+    if ($logoPath) {
+        $pic = New-Object System.Windows.Forms.PictureBox
+        $pic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+        $pic.Location = New-Object System.Drawing.Point(24, $y)
+        $pic.Size = New-Object System.Drawing.Size(200, 72)
+        $pic.Image = [System.Drawing.Image]::FromFile($logoPath)
+        $form.Controls.Add($pic)
+
+        $title = New-Object System.Windows.Forms.Label
+        $title.Text = "RescueGrid"
+        $title.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+        $title.ForeColor = [System.Drawing.Color]::FromArgb(0, 163, 255)
+        $title.Location = New-Object System.Drawing.Point(240, 28)
+        $title.Size = New-Object System.Drawing.Size(260, 40)
+        $form.Controls.Add($title)
+        $y = 96
+    } else {
+        $title = New-Object System.Windows.Forms.Label
+        $title.Text = "Restor-PC RescueGrid"
+        $title.Font = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Bold)
+        $title.ForeColor = [System.Drawing.Color]::FromArgb(0, 163, 255)
+        $title.Location = New-Object System.Drawing.Point(24, $y)
+        $title.Size = New-Object System.Drawing.Size(480, 32)
+        $form.Controls.Add($title)
+        $y = 52
+    }
+
+    $mode = if (Test-IsWinPE) { "WinPE" } else { "Windows (live)" }
+    $wins = @(Find-AllWindowsInstallations)
+    $vols = @(Get-WinPEVolumes)
+    $volLines = @(foreach ($v in $vols) {
+        "{0}: {1} - {2}/{3} Go" -f $v.DriveLetter, $v.FileSystemLabel,
+            [math]::Round($v.SizeRemaining / 1GB, 0), [math]::Round($v.Size / 1GB, 0)
+    })
+    $winTxt = if ($wins.Count) { ($wins | ForEach-Object { $_.windows_path }) -join ", " } else { "aucun" }
+    $infoText = "Systeme : $mode`r`nWindows : $winTxt`r`n`r`nVolumes :`r`n" + ($volLines -join "`r`n")
+
+    $info = New-Object System.Windows.Forms.Label
+    $info.Text = $infoText
+    $info.Location = New-Object System.Drawing.Point(24, $y)
+    $info.AutoSize = $false
+    $info.Width = 480
+    $lineCount = (@($infoText -split "`r`n")).Count
+    $info.Height = [Math]::Max(90, 18 * $lineCount + 12)
+    $info.ForeColor = [System.Drawing.Color]::FromArgb(147, 169, 197)
+    $form.Controls.Add($info)
+    $y = $info.Bottom + 16
+
+    $actions = @(
+        @{ Text = "1. Diagnostic complet"; Fn = { Invoke-Diagnostic } },
+        @{ Text = "2. Sauvegarde utilisateur"; Fn = { Invoke-Backup } },
+        @{ Text = "3. Analyse SMART disques"; Fn = { Invoke-SMART } },
+        @{ Text = "4. Reparation boot Windows"; Fn = { Invoke-BootRepair } },
+        @{ Text = "5. Export rapport seul"; Fn = { Invoke-Report } },
+        @{ Text = "6. Reinstallation (preparation)"; Fn = { Invoke-Reinstall } },
+        @{ Text = "7. Analyser Windows hors ligne"; Fn = { Invoke-Offline } },
+        @{ Text = "8. Verifier lintegrite systeme"; Fn = { Invoke-SystemCheck } },
+        @{ Text = "9. Historique local (ZIP / score)"; Fn = { Show-LocalHistoryGui -BackupRoot $BackupRoot } },
+        @{ Text = "10. Sync rapports vers dashboard"; Fn = { Sync-LocalZipsToDashboard -BackupRoot $BackupRoot -UploadUrl $DashboardUploadUrl -UploadApiKey $UploadApiKey } }
+    )
+
+    foreach ($a in $actions) {
+        $btn = New-Object System.Windows.Forms.Button
+        $btn.Text = $a.Text
+        $btn.Location = New-Object System.Drawing.Point(24, $y)
+        $btn.Size = New-Object System.Drawing.Size(480, 40)
+        $btn.FlatStyle = "Flat"
+        $btn.BackColor = [System.Drawing.Color]::FromArgb(13, 27, 47)
+        $btn.ForeColor = [System.Drawing.Color]::White
+        $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(27, 54, 86)
+        $fn = $a.Fn
+        $btn.Add_Click({
+            $form.Hide()
+            try { & $fn } catch {
+                [System.Windows.Forms.MessageBox]::Show("$_", "Erreur RescueGrid") | Out-Null
+            }
+            $form.Show()
+            $form.Activate()
+        }.GetNewClosure())
+        $form.Controls.Add($btn)
+        $y += 48
+    }
+
+    $quit = New-Object System.Windows.Forms.Button
+    $quit.Text = "Quitter"
+    $quit.Location = New-Object System.Drawing.Point(24, $y)
+    $quit.Size = New-Object System.Drawing.Size(480, 40)
+    $quit.FlatStyle = "Flat"
+    $quit.BackColor = [System.Drawing.Color]::FromArgb(90, 30, 40)
+    $quit.ForeColor = [System.Drawing.Color]::White
+    $quit.Add_Click({ $form.Close() })
+    $form.Controls.Add($quit)
+
+    [void]$form.ShowDialog()
+    if ($logoPath -and $pic -and $pic.Image) { $pic.Image.Dispose() }
+}
+
+# Entree : GUI sous Windows live (sauf -Console), menu texte sinon / WinPE.
+$useGui = $Gui -or ((-not $Console) -and (-not (Test-IsWinPE)))
+if ($useGui) {
+    try {
+        $script:RescueGridGuiMode = $true
+        Show-RescueGridGui
+        return
+    } catch {
+        Write-Host "[GUI] Impossible d'ouvrir linterface : $_" -ForegroundColor Yellow
+        Write-Host "[GUI] Passage au menu texte..." -ForegroundColor Yellow
+        $script:RescueGridGuiMode = $false
+    }
+}
+
+# Menu principal (texte)
 do {
     Show-Menu "Menu Principal"
     
@@ -544,7 +857,7 @@ do {
     Write-Host " 5. Export rapport seul" -ForegroundColor White
     Write-Host " 6. Reinstallation (preparation)" -ForegroundColor White
     Write-Host " 7. Analyser Windows hors ligne" -ForegroundColor White
-    Write-Host " 8. Verifier l'integrite systeme" -ForegroundColor White
+    Write-Host " 8. Verifier lintegrite systeme" -ForegroundColor White
     Write-Host " 9. Quitter" -ForegroundColor Red
     Write-Host ""
     $choice = Read-Host "Votre choix (1-9)"

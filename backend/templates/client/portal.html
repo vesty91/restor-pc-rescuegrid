@@ -36,6 +36,17 @@
     <div><span style="color:var(--muted)">{{ client.name }}</span> · <a href="/client/logout">Déconnexion</a></div>
   </div>
   <div class="main">
+    {% if request.query_params.get('quote') == 'accepted' %}
+    <div class="card" style="border-color:var(--success);margin-bottom:16px">
+      <strong style="color:var(--success)">Devis accepté.</strong>
+      Une facture a été générée{% if request.query_params.get('invoice') %}
+      — <a href="/client/invoice/{{ request.query_params.get('invoice') }}/pdf" target="_blank">voir le PDF</a>{% endif %}.
+    </div>
+    {% elif request.query_params.get('quote') == 'not_acceptable' %}
+    <div class="card" style="border-color:var(--warning);margin-bottom:16px">
+      Ce devis ne peut plus être accepté.
+    </div>
+    {% endif %}
     <div class="kpi-grid">
       <div class="kpi"><span>Interventions</span><strong>{{ interventions|length }}</strong></div>
       <div class="kpi"><span>Devis</span><strong>{{ quotes|length }}</strong></div>
@@ -74,7 +85,17 @@
             <td>{{ q.created_at.strftime('%d/%m/%Y') }}</td>
             <td>{{ "%.2f"|format(q.amount) }} €</td>
             <td><span class="pill">{{ q.status|status_fr }}</span></td>
-            <td><a href="/client/quote/{{ q.id }}/pdf" target="_blank">Voir le PDF →</a></td>
+            <td style="white-space:nowrap">
+              <a href="/client/quote/{{ q.id }}/pdf" target="_blank">PDF</a>
+              {% if q.status in ['draft', 'sent', 'pending'] %}
+              <form action="/client/quote/{{ q.id }}/accept" method="post" style="display:inline;margin-left:10px"
+                    onsubmit="return confirm('Accepter ce devis et générer la facture ?')">
+                <button type="submit" style="background:var(--success);color:#04120a;border:0;border-radius:8px;padding:6px 10px;font-weight:800;cursor:pointer">
+                  Accepter → facture
+                </button>
+              </form>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

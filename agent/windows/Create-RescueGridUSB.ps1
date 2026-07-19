@@ -116,7 +116,8 @@ $paths = @(
     "$usbRoot\tools\smartctl",
     "$usbRoot\tools\testdisk",
     "$usbRoot\tools\photorec",
-    "$usbRoot\winpe"
+    "$usbRoot\winpe",
+    "$usbRoot\agent\windows\assets"
 )
 foreach ($p in $paths) { New-Item -ItemType Directory -Force -Path $p | Out-Null }
 
@@ -124,7 +125,7 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Resolve-Path (Join-Path $scriptRoot "..\..") | Select-Object -ExpandProperty Path
 
 Write-Step "Copie des scripts agent"
-$agentFiles = @("Invoke-RescueGrid.ps1", "Start-RescueGrid.ps1")
+$agentFiles = @("Invoke-RescueGrid.ps1", "Start-RescueGrid.ps1", "RescueGrid.GuiHelpers.ps1")
 foreach ($file in $agentFiles) {
     $src = Join-Path $scriptRoot $file
     if (Test-Path $src) {
@@ -133,6 +134,13 @@ foreach ($file in $agentFiles) {
     } else {
         Write-Host "Manquant : $file" -ForegroundColor Yellow
     }
+}
+$logoSrc = Join-Path $scriptRoot "assets\restorpc_logo.png"
+if (Test-Path $logoSrc) {
+    Copy-Item $logoSrc -Destination "$usbRoot\agent\windows\assets\restorpc_logo.png" -Force
+    Write-Host "OK assets\restorpc_logo.png" -ForegroundColor Green
+} else {
+    Write-Host "Logo manquant : assets\restorpc_logo.png" -ForegroundColor Yellow
 }
 
 if ($IncludeProject) {
@@ -186,10 +194,21 @@ $cmd = @"
 @echo off
 title Restor-PC RescueGrid USB
 set RESCUEGRID_USB=%~dp0RescueGrid
-powershell -NoProfile -ExecutionPolicy Bypass -File "%RESCUEGRID_USB%\agent\windows\Start-RescueGrid.ps1"
+REM -STA requis pour WinForms ; -Gui ouvre l'interface (menu texte : ajoutez -Console)
+powershell -NoProfile -STA -ExecutionPolicy Bypass -File "%RESCUEGRID_USB%\agent\windows\Start-RescueGrid.ps1" -Gui
+if errorlevel 1 powershell -NoProfile -ExecutionPolicy Bypass -File "%RESCUEGRID_USB%\agent\windows\Start-RescueGrid.ps1" -Console
 pause
 "@
 Set-Content -Path (Join-Path $driveRoot "Start-RescueGrid.cmd") -Value $cmd -Encoding ASCII
+
+$cmdConsole = @"
+@echo off
+title Restor-PC RescueGrid USB (menu texte)
+set RESCUEGRID_USB=%~dp0RescueGrid
+powershell -NoProfile -ExecutionPolicy Bypass -File "%RESCUEGRID_USB%\agent\windows\Start-RescueGrid.ps1" -Console
+pause
+"@
+Set-Content -Path (Join-Path $driveRoot "Start-RescueGrid-Console.cmd") -Value $cmdConsole -Encoding ASCII
 
 $startnet = @"
 wpeinit

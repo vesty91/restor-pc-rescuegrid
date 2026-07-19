@@ -52,8 +52,9 @@ from ..client_auth import (
 )
 from ..database import get_session
 from ..deps import get_client_ip
-from ..helpers import invoice_html, quote_html, try_pdf_response
+from ..helpers import allocate_document_number, invoice_html, quote_html, to_money, try_pdf_response
 from ..models import Appointment, Client, ClientAccount, ClientOAuthIdentity, Invoice, Intervention, Quote
+from ..services.billing_defaults import default_service_description
 from ..services.mail import send_document_email as _send_email_fn
 
 logger = logging.getLogger(__name__)
@@ -254,6 +255,50 @@ def client_quote_pdf(quote_id: int, request: Request, session: Session = Depends
     if not quote or quote.client_id != account.client_id:
         raise HTTPException(status_code=404, detail="Devis introuvable")
     return try_pdf_response(quote_html(quote), f"{quote.quote_number}.pdf")
+
+
+@router.post("/client/quote/{quote_id}/accept")
+def client_accept_quote(quote_id: int, request: Request, session: Session = Depends(get_session)):
+    """Le client accepte le devis → statut accepted + facture brouillon créée."""
+    account, redirect = get_client_or_redirect(request, session)
+    if redirect:
+        return redirect
+    quote = session.scalars(select(Quote).where(Quote.id == quote_id)).first()
+    if not quote or quote.client_id != account.client_id:
+        raise HTTPException(status_code=404, detail="Devis introuvable")
+    if quote.status in {"cancelled", "rejected"}:
+        return RedirectResponse("/client/portal?quote=not_acceptable", status_code=303)
+
+    existing = session.scalars(select(Invoice).where(Invoice.quote_id == quote_id)).first()
+    if existing:
+        quote.status = "accepted"
+        session.commit()
+        return RedirectResponse(f"/client/portal?quote=accepted&invoice={existing.id}", status_code=303)
+
+    money = to_money(quote.amount)
+    notes = quote.description or default_service_description(quote.intervention)
+
+    def build_row(invoice_number: str) -> Invoice:
+        return Invoice(
+            intervention_id=quote.intervention_id,
+            client_id=quote.client_id,
+            quote_id=quote.id,
+            invoice_number=invoice_number,
+            amount=money,
+            tax=to_money(0),
+            total=money,
+            status="draft",
+            notes=notes,
+        )
+
+    invoice = allocate_document_number(session, "INV", Invoice, "invoice_number", build_row)
+    quote.status = "accepted"
+    session.commit()
+    logger.info(
+        "Client %s a accepté le devis %s → facture %s",
+        account.client_id, quote.quote_number, invoice.invoice_number,
+    )
+    return RedirectResponse(f"/client/portal?quote=accepted&invoice={invoice.id}", status_code=303)
 
 
 @router.get("/client/invoice/{invoice_id}/pdf")

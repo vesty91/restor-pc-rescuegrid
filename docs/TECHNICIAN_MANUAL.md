@@ -60,9 +60,14 @@ E:\RescueGrid\
 3. `startnet.cmd` lance automatiquement `Start-RescueGrid.ps1` depuis la
    première lettre de lecteur où `RescueGrid\agent\windows\Start-RescueGrid.ps1`
    est trouvé.
-4. Le menu WinPE (9 options : diagnostic, sauvegarde, SMART, réparation boot,
-   export rapport, préparation réinstallation, analyse hors ligne, vérification
+4. Le menu WinPE (diagnostic, sauvegarde, SMART, réparation boot, export
+   rapport, préparation réinstallation, analyse hors ligne, vérification
    intégrité, quitter) fonctionne à l'identique du mode Windows.
+5. **Clé bootable complète** : après ADK (§4), lancer
+   `Create-RescueGridUSB.ps1 -TargetDrive E: -WinPEBasePath C:\WinPE`
+   (adapte la lettre). Sans `boot.wim`, la clé reste utilisable en Windows
+   live via `Start-RescueGrid.cmd` (GUI : progression, historique ZIP, sync
+   dashboard, signature client).
 
 ## 4. Construire l'image WinPE avec `Build-RescueGridWinPE.ps1`
 

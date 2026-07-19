@@ -60,7 +60,11 @@
         <input type="checkbox" name="notify_email" value="on" checked style="width:auto">
         Envoyer un email de confirmation au client
       </label>
-      <p class="hint">Nécessite un email sur la fiche client. Test SMTP : Paramètres → Email.</p>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:600">
+        <input type="checkbox" name="notify_sms" value="on" {% if sms_configured %}checked{% endif %} style="width:auto">
+        Envoyer aussi un SMS / WhatsApp (Twilio)
+      </label>
+      <p class="hint">Email : fiche client. SMS : téléphone client + variables TWILIO_* dans .env{% if not sms_configured %} (non configuré pour l’instant){% endif %}.</p>
       <button style="margin-top:14px">Créer le rendez-vous</button>
     </form>
   </div>
@@ -90,6 +94,9 @@
               <td style="white-space:nowrap">
                 <form action="/planning/{{ a.id }}/resend-email" method="post" style="display:inline" title="Renvoyer l'email RDV">
                   <button class="btn-sm" type="submit">✉</button>
+                </form>
+                <form action="/planning/{{ a.id }}/resend-sms" method="post" style="display:inline" title="Renvoyer SMS / WhatsApp RDV">
+                  <button class="btn-sm" type="submit">📱</button>
                 </form>
                 <form action="/delete/appointment/{{ a.id }}" method="post" style="display:inline" onsubmit="return confirm('Supprimer ce rendez-vous ?')">
                   <button class="btn-sm" type="submit">✕</button>

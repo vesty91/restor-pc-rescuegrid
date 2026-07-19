@@ -7,6 +7,7 @@ Planning / rendez-vous atelier.
   POST /planning                     → créer un RDV
   POST /planning/{id}/status         → changer le statut
   POST /planning/{id}/resend-email   → renvoyer l'email RDV
+  POST /planning/{id}/resend-sms     → renvoyer le SMS / WhatsApp RDV
   POST /delete/appointment/{id}      → supprimer (admin)
 """
 from __future__ import annotations
@@ -28,6 +29,7 @@ from ..auth import get_admin_or_redirect, log_activity
 from ..helpers import paginate_query, status_label_fr
 from ..models import Appointment, Client, Intervention, User
 from ..services.mail import send_text_email
+from ..services.sms import send_sms, send_whatsapp, sms_configured, whatsapp_configured
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +89,46 @@ def _notify_client_appointment(session: Session, appointment: Appointment, *, ev
     return detail
 
 
+def _appointment_sms_body(client: Client, appointment: Appointment, *, event: str) -> str:
+    start_local = appointment.start_at.strftime("%d/%m/%Y %H:%M")
+    status_fr = status_label_fr(appointment.status)
+    if event == "created":
+        return (
+            f"Restor-PC: RDV confirme le {start_local} — {appointment.title}. "
+            f"Espace client: espace-client.restor-pc.fr"
+        )
+    if event == "cancelled":
+        return f"Restor-PC: RDV annule ({appointment.title}) prevu le {start_local}."
+    if event == "resend":
+        return f"Restor-PC: rappel RDV le {start_local} — {appointment.title}."
+    return f"Restor-PC: RDV mis a jour ({status_fr}) le {start_local} — {appointment.title}."
+
+
+def _notify_client_appointment_sms(session: Session, appointment: Appointment, *, event: str) -> str | None:
+    """SMS et/ou WhatsApp. Retourne un code détail ou None si pas d'envoi demandé côté config."""
+    if not appointment.client_id:
+        return "no_client"
+    client = session.get(Client, appointment.client_id)
+    if not client or not (client.phone or "").strip():
+        return "missing_client_phone"
+    body = _appointment_sms_body(client, appointment, event=event)
+    details: list[str] = []
+    if sms_configured():
+        ok, detail = send_sms(client.phone, body)
+        details.append(f"sms:{detail}" if ok else f"sms_fail:{detail}")
+    if whatsapp_configured():
+        ok, detail = send_whatsapp(client.phone, body)
+        details.append(f"wa:{detail}" if ok else f"wa_fail:{detail}")
+    if not details:
+        return "sms_not_configured"
+    joined = ",".join(details)
+    if any(x.endswith(":sent") for x in details):
+        logger.info("SMS/WA RDV %s vers %s (%s) %s", appointment.id, client.phone, event, joined)
+        return "sent"
+    logger.warning("SMS/WA RDV %s echoue: %s", appointment.id, joined)
+    return joined
+
+
 @router.get("/planning", response_class=HTMLResponse)
 def planning_list(request: Request, range_filter: str = "week", page: int = 1, session: Session = Depends(get_session)):
     user, redirect = get_user_or_redirect(request, session)
@@ -130,10 +172,15 @@ def planning_list(request: Request, range_filter: str = "week", page: int = 1, s
         "technicians": technicians,
         "range_filter": range_filter,
         "appointment_statuses": APPOINTMENT_STATUSES,
+        "sms_configured": sms_configured() or whatsapp_configured(),
         "page": page,
         "total_pages": total_pages,
         "total_items": total_items,
     })
+
+
+def _truthy_form(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on", "o", "oui"}
 
 
 @router.post("/planning")
@@ -147,6 +194,7 @@ def create_appointment(
     end_at: str = Form(""),
     notes: str = Form(""),
     notify_email: str = Form("on"),
+    notify_sms: str = Form(""),
     session: Session = Depends(get_session),
 ):
     user, redirect = get_user_or_redirect(request, session)
@@ -174,13 +222,23 @@ def create_appointment(
     session.add(appointment)
     session.commit()
     session.refresh(appointment)
-    want_mail = str(notify_email or "").strip().lower() in {"1", "true", "yes", "on", "o", "oui"}
     mail_detail = None
-    if want_mail:
+    sms_detail = None
+    if _truthy_form(notify_email):
         mail_detail = _notify_client_appointment(session, appointment, event="created")
-    log_activity(session, user, "appointment.create", f"{appointment.id} mail={mail_detail or 'skipped'}")
+    if _truthy_form(notify_sms):
+        sms_detail = _notify_client_appointment_sms(session, appointment, event="created")
+    log_activity(
+        session, user, "appointment.create",
+        f"{appointment.id} mail={mail_detail or 'skipped'} sms={sms_detail or 'skipped'}",
+    )
     session.commit()
-    q = f"?mail={mail_detail}" if mail_detail else ""
+    parts = []
+    if mail_detail:
+        parts.append(f"mail={mail_detail}")
+    if sms_detail:
+        parts.append(f"sms={sms_detail}")
+    q = ("?" + "&".join(parts)) if parts else ""
     return RedirectResponse(f"/planning{q}", status_code=303)
 
 
@@ -202,6 +260,24 @@ def resend_appointment_email(
     return RedirectResponse(f"/planning?mail={mail_detail}&range_filter=upcoming", status_code=303)
 
 
+@router.post("/planning/{appointment_id}/resend-sms")
+def resend_appointment_sms(
+    appointment_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    user, redirect = get_user_or_redirect(request, session)
+    if redirect:
+        return redirect
+    appointment = session.scalars(select(Appointment).where(Appointment.id == appointment_id)).first()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Rendez-vous introuvable")
+    sms_detail = _notify_client_appointment_sms(session, appointment, event="resend")
+    log_activity(session, user, "appointment.resend_sms", f"{appointment.id} sms={sms_detail}")
+    session.commit()
+    return RedirectResponse(f"/planning?sms={sms_detail}&range_filter=upcoming", status_code=303)
+
+
 @router.post("/planning/{appointment_id}/status")
 def update_appointment_status(
     appointment_id: int,
@@ -216,14 +292,25 @@ def update_appointment_status(
     if not appointment:
         raise HTTPException(status_code=404, detail="Rendez-vous introuvable")
     mail_detail = None
+    sms_detail = None
     if status in APPOINTMENT_STATUSES and status != appointment.status:
         appointment.status = status
         session.commit()
         event = "cancelled" if status == "cancelled" else "updated"
         mail_detail = _notify_client_appointment(session, appointment, event=event)
-        log_activity(session, user, "appointment.status", f"{appointment.id} {status} mail={mail_detail}")
+        if sms_configured() or whatsapp_configured():
+            sms_detail = _notify_client_appointment_sms(session, appointment, event=event)
+        log_activity(
+            session, user, "appointment.status",
+            f"{appointment.id} {status} mail={mail_detail} sms={sms_detail}",
+        )
         session.commit()
-    q = f"?mail={mail_detail}" if mail_detail else ""
+    parts = []
+    if mail_detail:
+        parts.append(f"mail={mail_detail}")
+    if sms_detail:
+        parts.append(f"sms={sms_detail}")
+    q = ("?" + "&".join(parts)) if parts else ""
     return RedirectResponse(f"/planning{q}", status_code=303)
 
 
