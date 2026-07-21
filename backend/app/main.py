@@ -1,5 +1,5 @@
 """
-main.py — Restor-PC RescueGrid v12.5.2
+main.py — Restor-PC RescueGrid v12.6.0
 --------------------------------------
 Point d'entrée FastAPI — réduit à l'essentiel.
 
@@ -456,9 +456,12 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.globals["app_version"] = APP_VERSION
 
 from .helpers import format_date_fr, status_label_fr
+from .timeutil import format_app_local, format_app_local_time
 
 templates.env.filters["status_fr"] = status_label_fr
 templates.env.filters["date_fr"] = format_date_fr
+templates.env.filters["dt_local"] = format_app_local
+templates.env.filters["time_local"] = format_app_local_time
 
 
 def pagination_query(request: Request, page: int) -> str:
@@ -908,7 +911,25 @@ def api_stats(request: Request, session: Session = Depends(get_session)):
 
 @app.get("/health")
 def healthcheck():
+    """Liveness : le process répond (pas de check DB)."""
     return {"status": "ok", "version": APP_VERSION}
+
+
+@app.get("/ready")
+def readiness():
+    """Readiness : process + base de données joignable (pour probe deploy/NAS)."""
+    from sqlalchemy import text
+
+    try:
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+        return {"status": "ready", "version": APP_VERSION}
+    except Exception as exc:
+        logger.warning("Readiness KO : %s", exc)
+        return JSONResponse(
+            {"status": "not_ready", "version": APP_VERSION, "detail": "database_unavailable"},
+            status_code=503,
+        )
 
 
 MAX_LOGO_BYTES = int(os.getenv("MAX_LOGO_BYTES", str(5 * 1024 * 1024)))

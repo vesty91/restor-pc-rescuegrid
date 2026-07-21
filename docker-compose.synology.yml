@@ -107,7 +107,7 @@ services:
       # Surcharge runtime : un ARG Docker vide ("") écrase le défaut Dockerfile
       # et faisait planter FastAPI (version OpenAPI vide). Toujours fournir une
       # valeur non vide ici, même si le build a échoué à injecter VERSION.
-      APP_VERSION: "${APP_VERSION:-12.5.2}"
+      APP_VERSION: "${APP_VERSION:-12.6.0}"
       # false par defaut pour ne pas casser la connexion tant que HTTPS n'est pas
       # configure sur nginx (etape 5 de docs/SYNOLOGY_DEPLOY.md) — passer a true
       # dans .env une fois un certificat TLS actif.

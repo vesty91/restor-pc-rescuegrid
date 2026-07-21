@@ -30,6 +30,7 @@ from ..helpers import paginate_query, status_label_fr
 from ..models import Appointment, Client, Intervention, User
 from ..services.mail import send_text_email
 from ..services.sms import send_sms, send_whatsapp, sms_configured, whatsapp_configured
+from ..timeutil import format_app_local, format_app_local_time, parse_form_local_to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +54,10 @@ def _notify_client_appointment(session: Session, appointment: Appointment, *, ev
     client = session.get(Client, appointment.client_id)
     if not client or not client.email:
         return "missing_client_email"
-    start_local = appointment.start_at.strftime("%d/%m/%Y à %H:%M")
+    start_local = format_app_local(appointment.start_at)
     end_txt = ""
     if appointment.end_at:
-        end_txt = f" (fin prévue {appointment.end_at.strftime('%H:%M')})"
+        end_txt = f" (fin prévue {format_app_local_time(appointment.end_at)})"
     status_fr = status_label_fr(appointment.status)
     if event == "created":
         subject = f"Confirmation de rendez-vous — {appointment.title}"
@@ -93,7 +94,7 @@ def _notify_client_appointment(session: Session, appointment: Appointment, *, ev
 
 
 def _appointment_sms_body(client: Client, appointment: Appointment, *, event: str) -> str:
-    start_local = appointment.start_at.strftime("%d/%m/%Y %H:%M")
+    start_local = format_app_local(appointment.start_at).replace(" à ", " ")
     status_fr = status_label_fr(appointment.status)
     if event == "created":
         return (
@@ -207,13 +208,13 @@ def create_appointment(
     if redirect:
         return redirect
     try:
-        start_dt = datetime.strptime(start_at, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc)
+        start_dt = parse_form_local_to_utc(start_at)
     except ValueError:
         raise HTTPException(status_code=400, detail="Date/heure de début invalide")
     end_dt = None
     if end_at:
         try:
-            end_dt = datetime.strptime(end_at, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc)
+            end_dt = parse_form_local_to_utc(end_at)
         except ValueError:
             end_dt = None
     appointment = Appointment(

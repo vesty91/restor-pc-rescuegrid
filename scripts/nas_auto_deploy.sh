@@ -157,26 +157,28 @@ fi
     exit 1
   fi
 
-  # Healthcheck robuste : d'abord via le réseau Docker (fiable), puis via le
-  # port hôte 8080. Retry ~2 min — uvicorn sur NAS Synology peut être lent.
+  # Readiness robuste : /ready (DB) en priorité, repli /health (liveness).
+  # D'abord via le réseau Docker, puis port hôte 8080. Retry ~2 min.
   _health_ok() {
-    "$DOCKER" compose -f "$COMPOSE_FILE" exec -T backend curl -sf -m 8 http://127.0.0.1:8000/health > /dev/null 2>&1 \
+    "$DOCKER" compose -f "$COMPOSE_FILE" exec -T backend curl -sf -m 8 http://127.0.0.1:8000/ready > /dev/null 2>&1 \
+      || "$DOCKER" compose -f "$COMPOSE_FILE" exec -T backend curl -sf -m 8 http://127.0.0.1:8000/health > /dev/null 2>&1 \
+      || curl -sf -m 8 http://127.0.0.1:8080/ready > /dev/null 2>&1 \
       || curl -sf -m 8 http://127.0.0.1:8080/health > /dev/null 2>&1
   }
 
-  echo "Attente du démarrage puis vérification de santé (/health, max ~120s)..."
+  echo "Attente du démarrage puis vérification readiness (/ready, max ~120s)..."
   HEALTH_OK=0
   for i in $(seq 1 24); do
     sleep 5
     if _health_ok; then
       HEALTH_OK=1
-      echo "Health OK après ~$((i * 5))s."
+      echo "Ready OK après ~$((i * 5))s."
       break
     fi
-    echo "  tentative $i/24 : /health pas encore prêt..."
+    echo "  tentative $i/24 : /ready pas encore prêt..."
   done
   if [ "$HEALTH_OK" -ne 1 ]; then
-    echo "ECHEC : /health ne répond pas après bascule."
+    echo "ECHEC : /ready ne répond pas après bascule."
     echo "--- docker compose ps ---"
     "$DOCKER" compose -f "$COMPOSE_FILE" ps || true
     echo "--- logs backend (80 dernières lignes) ---"

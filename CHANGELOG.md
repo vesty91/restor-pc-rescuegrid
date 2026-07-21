@@ -1,5 +1,22 @@
 # Changelog
 
+## v12.6.0 — Fiabilité atelier (PDF, fuseau, readiness, rappels)
+
+- **PDF Chromium** : génération via `Popen` + kill de l’arbre de process
+  (`taskkill /T` / `killpg`) pour éviter les zombies sur NAS Synology.
+- **Fuseau atelier** : saisie `datetime-local` interprétée en `APP_TIMEZONE`
+  (défaut `Europe/Paris`), stockée en UTC ; affichage planning via filtres
+  Jinja `time_local` / `dt_local` (`app/timeutil.py`).
+- **Rappels RDV J-1** : `sms_reminder_sent_at` uniquement si un canal a
+  réellement réussi (`sent`), ou dead-end permanent (pas d’email/tél) ;
+  sinon retry au prochain poll.
+- **`GET /ready`** : readiness DB (`SELECT 1`) → 503 si KO ; `/health` reste
+  un simple liveness. Deploy NAS vérifie `/ready` puis `/health`.
+- **Pytest** : `conftest.py` fixe `DATABASE_URL` avant import `app.*` ;
+  tests fuseau, migration `0011`, `/health`+`/ready`.
+- **Dépendance** `tzdata` (ZoneInfo fiable sur images Docker slim).
+- Dépendance optionnelle Twilio documentée (`.env.example`).
+
 ## v12.5.2 — Correctifs migrations SQLite / hygiène locale
 
 - **Migration `0008_fk_ondelete`** : `naming_convention` pour que SQLite

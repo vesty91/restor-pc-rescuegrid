@@ -84,7 +84,7 @@
           <tbody>
             {% for a in day_group.entries %}
             <tr>
-              <td style="white-space:nowrap">{{ a.start_at.strftime('%H:%M') }}{% if a.end_at %} - {{ a.end_at.strftime('%H:%M') }}{% endif %}</td>
+              <td style="white-space:nowrap">{{ a.start_at|time_local }}{% if a.end_at %} - {{ a.end_at|time_local }}{% endif %}</td>
               <td><strong>{{ a.title }}</strong>{% if a.notes %}<br><span class="hint">{{ a.notes }}</span>{% endif %}</td>
               <td>{% if a.client %}<a href="/client/{{ a.client.id }}">{{ a.client.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
               <td>{{ a.technician.full_name or a.technician.username if a.technician else '—' }}</td>

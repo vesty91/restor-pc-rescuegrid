@@ -24,23 +24,33 @@ APPOINTMENT_REMINDER_ENABLED = os.getenv("APPOINTMENT_REMINDER_ENABLED", "false"
     "true",
     "yes",
 }
-# Heures avant le RDV : borne basse / haute de la fenêtre d'envoi
 APPOINTMENT_REMINDER_HOURS_MIN = float(os.getenv("APPOINTMENT_REMINDER_HOURS_MIN", "20"))
 APPOINTMENT_REMINDER_HOURS_MAX = float(os.getenv("APPOINTMENT_REMINDER_HOURS_MAX", "28"))
-# Intervalle entre deux balayages (secondes)
 APPOINTMENT_REMINDER_POLL_SECONDS = int(os.getenv("APPOINTMENT_REMINDER_POLL_SECONDS", "900"))
 
 _ACTIVE_STATUSES = ("scheduled", "confirmed")
 
+# Canaux définitivement inutilisables (pas la peine de reboucler).
+_DEAD_MAIL = frozenset({"no_client", "missing_client_email"})
+_DEAD_SMS = frozenset({"no_client", "missing_client_phone", "sms_not_configured", None})
+
+
+def _reminder_succeeded(mail_detail: str | None, sms_detail: str | None) -> bool:
+    return mail_detail == "sent" or sms_detail == "sent"
+
+
+def _reminder_permanently_unusable(mail_detail: str | None, sms_detail: str | None) -> bool:
+    return mail_detail in _DEAD_MAIL and sms_detail in _DEAD_SMS
+
 
 def run_due_appointment_reminders() -> int:
-    """Envoie les rappels J-1 dus. Retourne le nombre de RDV notifiés."""
+    """Envoie les rappels J-1 dus. Retourne le nombre de RDV marqués (succès ou dead-end)."""
     from .routes.planning import _notify_client_appointment, _notify_client_appointment_sms
 
     now = datetime.now(timezone.utc)
     window_start = now + timedelta(hours=APPOINTMENT_REMINDER_HOURS_MIN)
     window_end = now + timedelta(hours=APPOINTMENT_REMINDER_HOURS_MAX)
-    sent = 0
+    marked = 0
 
     with SessionLocal() as session:
         due = session.scalars(
@@ -56,24 +66,40 @@ def run_due_appointment_reminders() -> int:
         for appointment in due:
             mail_detail = _notify_client_appointment(session, appointment, event="reminder")
             sms_detail = _notify_client_appointment_sms(session, appointment, event="reminder")
-            # Marquer envoyé dès qu'au moins un canal a tenté (évite boucle infinie
-            # si email/SMS absents) — sauf si les deux disent "pas de client".
-            if mail_detail in {"no_client"} and sms_detail in {"no_client", None}:
-                logger.info("RDV %s : pas de client — skip rappel", appointment.id)
-                continue
-            appointment.sms_reminder_sent_at = now
-            session.commit()
-            sent += 1
-            logger.info(
-                "Rappel RDV %s envoyé (mail=%s sms=%s)",
-                appointment.id,
-                mail_detail,
-                sms_detail,
-            )
 
-    if sent:
-        logger.info("Rappels RDV automatiques : %d envoyés", sent)
-    return sent
+            if _reminder_succeeded(mail_detail, sms_detail):
+                appointment.sms_reminder_sent_at = now
+                session.commit()
+                marked += 1
+                logger.info(
+                    "Rappel RDV %s envoyé (mail=%s sms=%s)",
+                    appointment.id,
+                    mail_detail,
+                    sms_detail,
+                )
+            elif _reminder_permanently_unusable(mail_detail, sms_detail):
+                # Aucun canal ne pourra jamais réussir — évite une boucle infinie.
+                appointment.sms_reminder_sent_at = now
+                session.commit()
+                marked += 1
+                logger.info(
+                    "RDV %s : aucun canal utilisable (mail=%s sms=%s) — marqué pour stop retry",
+                    appointment.id,
+                    mail_detail,
+                    sms_detail,
+                )
+            else:
+                # Échec transitoire SMTP/Twilio — retenter au prochain poll.
+                logger.warning(
+                    "Rappel RDV %s échoué (mail=%s sms=%s) — nouvel essai plus tard",
+                    appointment.id,
+                    mail_detail,
+                    sms_detail,
+                )
+
+    if marked:
+        logger.info("Rappels RDV automatiques : %d traités", marked)
+    return marked
 
 
 async def _appointment_reminder_loop() -> None:

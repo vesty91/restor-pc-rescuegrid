@@ -6,6 +6,7 @@ import base64
 import html
 import io
 import logging
+import os
 import subprocess
 import tempfile
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -805,34 +806,81 @@ def render_document_pdf(html_content: str, filename: str) -> tuple[bytes, str, s
         with tempfile.TemporaryDirectory() as tmp:
             html_path = Path(tmp) / "document.html"
             pdf_path = Path(tmp) / pdf_name
+            profile_dir = Path(tmp) / "chrome-profile"
+            profile_dir.mkdir(parents=True, exist_ok=True)
             html_path.write_text(html_content, encoding="utf-8")
+
+            import signal
+            import sys
+
+            def _kill_process_tree(proc: subprocess.Popen) -> None:
+                """Tue Chromium + enfants (évite fuites de process zombie sur NAS)."""
+                if proc.poll() is not None:
+                    return
+                try:
+                    if sys.platform == "win32":
+                        subprocess.run(
+                            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                            capture_output=True,
+                            timeout=10,
+                            check=False,
+                        )
+                    else:
+                        try:
+                            os.killpg(proc.pid, signal.SIGKILL)
+                        except (ProcessLookupError, PermissionError, OSError):
+                            proc.kill()
+                except Exception as kill_exc:
+                    logger.warning("Nettoyage process Chromium PID %s : %s", proc.pid, kill_exc)
+                try:
+                    proc.wait(timeout=5)
+                except Exception:
+                    pass
+
+            cmd = [
+                chromium,
+                "--headless=new",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-extensions",
+                "--no-first-run",
+                "--disable-crash-reporter",
+                f"--user-data-dir={profile_dir}",
+                "--no-pdf-header-footer",
+                "--print-to-pdf-no-header",
+                "--run-all-compositor-stages-before-draw",
+                "--virtual-time-budget=8000",
+                f"--print-to-pdf={pdf_path}",
+                html_path.as_uri(),
+            ]
+            proc: subprocess.Popen | None = None
             try:
-                subprocess.run(
-                    [
-                        chromium,
-                        "--headless=new",
-                        "--disable-gpu",
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-extensions",
-                        "--no-first-run",
-                        "--disable-crash-reporter",
-                        f"--user-data-dir={tmp}/chrome-profile",
-                        "--no-pdf-header-footer",
-                        "--print-to-pdf-no-header",
-                        "--run-all-compositor-stages-before-draw",
-                        "--virtual-time-budget=8000",
-                        f"--print-to-pdf={pdf_path}",
-                        html_path.as_uri(),
-                    ],
-                    check=True,
-                    timeout=45,
-                    capture_output=True,
-                )
-                if pdf_path.is_file() and pdf_path.stat().st_size > 0:
+                popen_kwargs: dict = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
+                if sys.platform != "win32":
+                    popen_kwargs["start_new_session"] = True
+                else:
+                    popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                proc = subprocess.Popen(cmd, **popen_kwargs)
+                proc.communicate(timeout=45)
+                if proc.returncode == 0 and pdf_path.is_file() and pdf_path.stat().st_size > 0:
                     return pdf_path.read_bytes(), "application", "pdf", pdf_name
+                logger.warning(
+                    "Chromium PDF exit=%s size=%s",
+                    proc.returncode,
+                    pdf_path.stat().st_size if pdf_path.is_file() else 0,
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning("Génération PDF via Chromium : timeout — kill process tree")
+                if proc is not None:
+                    _kill_process_tree(proc)
             except Exception as exc:
                 logger.warning("Génération PDF via Chromium impossible : %s", exc)
+                if proc is not None:
+                    _kill_process_tree(proc)
+            finally:
+                if proc is not None and proc.poll() is None:
+                    _kill_process_tree(proc)
 
     wkhtml = None
     for cmd in ("wkhtmltopdf", r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"):
