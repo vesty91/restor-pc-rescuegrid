@@ -32,6 +32,11 @@ tools/*.exe
 tools/*.msi
 tools/*.iso
 
+# Unlocker / Lockpick (outil tiers, licence + taille) — ne pas publier sur
+# GitHub public. Garder une copie locale ; voir Lockpick/README.md
+/Lockpick/**
+!/Lockpick/README.md
+
 # Volumes Docker Synology (données Postgres/MinIO)
 volumes/
 

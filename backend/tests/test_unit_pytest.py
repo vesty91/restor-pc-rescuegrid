@@ -69,6 +69,45 @@ def test_reminder_succeeded_helpers():
     assert _reminder_permanently_unusable("smtp_error", "sms_not_configured") is False
 
 
+def test_process_logo_image_png_roundtrip():
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.logo_upload import process_logo_image
+
+    buf = BytesIO()
+    Image.new("RGB", (64, 32), color=(20, 80, 160)).save(buf, format="PNG")
+    out = process_logo_image(buf.getvalue())
+    assert out.startswith(b"\x89PNG\r\n\x1a\n")
+    again = Image.open(BytesIO(out))
+    assert again.size == (64, 32)
+
+
+def test_process_logo_image_rejects_garbage():
+    from app.logo_upload import process_logo_image
+
+    try:
+        process_logo_image(b"not-an-image")
+        assert False, "devait lever ValueError"
+    except ValueError:
+        pass
+
+
+def test_process_logo_image_resizes_large():
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.logo_upload import process_logo_image
+
+    buf = BytesIO()
+    Image.new("RGB", (2000, 1000), color=(0, 0, 0)).save(buf, format="JPEG", quality=90)
+    out = process_logo_image(buf.getvalue(), max_edge=1024)
+    img = Image.open(BytesIO(out))
+    assert max(img.size) <= 1024
+
+
 def test_adapter_ram_wmi_cap_hidden(migrated_db):
     """AdapterRAM uint32 saturé (~4 Go) ne doit pas s'afficher comme VRAM réelle."""
     from app.main import _adapter_ram_bytes, _hardware_from_inventory, _pick_primary_gpu

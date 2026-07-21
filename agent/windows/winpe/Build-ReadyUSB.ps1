@@ -105,17 +105,20 @@ else {
     Write-Host "  Pour une cle bootable : -MakeBootable (ADK + WinPE) ou copiez sources\boot.wim puis relancez." -ForegroundColor Gray
 }
 
-# --- 3) Lockpick / Unlocker ---
+# --- 3) Lockpick / Unlocker (optionnel, hors dépôt GitHub public) ---
 Write-Host "[3/5] Lockpick / Unlocker..." -ForegroundColor White
 $lockSrc = Join-Path $projectRoot "Lockpick"
 $lockDst = Join-Path $driveRoot "RescueGrid\Lockpick"
-if (Test-Path $lockSrc) {
+# Présent si des binaires/scripts existent au-delà du seul README.md
+$lockFiles = @(Get-ChildItem -Path $lockSrc -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne "README.md" })
+if ((Test-Path $lockSrc) -and $lockFiles.Count -gt 0) {
     New-Item -ItemType Directory -Force -Path $lockDst | Out-Null
     robocopy $lockSrc $lockDst /E /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
     Write-Host "  -> copie vers RescueGrid\Lockpick" -ForegroundColor Green
 }
 else {
-    Write-Host "  -> Lockpick absent du projet (ignore)" -ForegroundColor Gray
+    Write-Host "  -> Lockpick absent en local (voir Lockpick\README.md) — ignore" -ForegroundColor Gray
 }
 
 # --- 4) Outils ---

@@ -994,18 +994,30 @@ async def upload_logo(request: Request, file: UploadFile = File(...), session: S
     # Réservé à l'admin : ce logo apparaît sur tous les devis/factures envoyés
     # aux clients, un technicien standard ne doit pas pouvoir le remplacer.
     from .auth import get_admin_or_redirect
+    from .logo_upload import process_logo_image
+
     user, redirect = get_admin_or_redirect(request, session)
     if redirect:
         return redirect
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Fichier image requis")
+    # SVG / XML : pas de décodage raster fiable + risque XSS si servi tel quel.
+    ctype = file.content_type.lower().split(";")[0].strip()
+    if ctype in {"image/svg+xml", "image/svg", "text/xml", "application/xml"}:
+        raise HTTPException(status_code=400, detail="SVG non autorisé — utilisez PNG ou JPEG")
+
     content = await file.read(MAX_LOGO_BYTES + 1)
     if len(content) > MAX_LOGO_BYTES:
         raise HTTPException(status_code=413, detail="Image trop volumineuse")
+    try:
+        png_bytes = process_logo_image(content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     logo_dir = STORAGE_DIR / "logos"
     logo_dir.mkdir(exist_ok=True)
     logo_path = logo_dir / "logo.png"
-    logo_path.write_bytes(content)
+    logo_path.write_bytes(png_bytes)
     config_path = BASE_DIR / "logo_config.json"
     config_path.write_text(json.dumps({"logo_path": "logos/logo.png"}), encoding="utf-8")
     return RedirectResponse("/", status_code=303)

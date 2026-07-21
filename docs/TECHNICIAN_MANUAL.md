@@ -21,7 +21,8 @@ Ce script enchaîne :
 
 1. `Create-RescueGridUSB.ps1` (structure + agent + config)
 2. Si `E:\sources\boot.wim` existe → `Apply-WinPE-WinXShell.ps1` (bureau Strelec)
-3. Copie `Lockpick\` → `RescueGrid\Lockpick\` si présent
+3. Copie `Lockpick\` → `RescueGrid\Lockpick\` si présent en local
+   (hors dépôt GitHub public — voir `Lockpick/README.md`)
 4. Copie `tools\` projet si non vide
 5. Écrit `PACK_USB_README.txt` à la racine de la clé
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## v12.6.1 — Logos sécurisés + Lockpick hors dépôt public
+
+- **Upload logo** : validation Pillow (décodage réel), refus SVG, strip EXIF,
+  redimensionnement max 1024 px, sauvegarde PNG uniquement.
+- **Lockpick** : retiré du tracking GitHub public (gitignore + `README` local) ;
+  le builder USB continue de le copier s’il est présent en local.
+
 ## v12.6.0 — Fiabilité atelier (PDF, fuseau, readiness, rappels)
 
 - **PDF Chromium** : génération via `Popen` + kill de l’arbre de process
