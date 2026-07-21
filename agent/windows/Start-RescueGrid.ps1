@@ -23,6 +23,26 @@ param(
     [switch]$Console
 )
 
+# WinForms exige le mode STA. startnet WinPE ne passe pas toujours -STA :
+# on se relance proprement si besoin (sauf menu texte).
+if (-not $Console) {
+    $apt = [System.Threading.Thread]::CurrentThread.GetApartmentState()
+    if ($apt -ne [System.Threading.ApartmentState]::STA) {
+        $argList = @(
+            "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass",
+            "-File", $PSCommandPath
+        )
+        if ($Gui) { $argList += "-Gui" }
+        if ($BackupRoot) { $argList += @("-BackupRoot", $BackupRoot) }
+        if ($RescueGridAgent) { $argList += @("-RescueGridAgent", $RescueGridAgent) }
+        if ($DashboardUploadUrl) { $argList += @("-DashboardUploadUrl", $DashboardUploadUrl) }
+        if ($UploadApiKey) { $argList += @("-UploadApiKey", $UploadApiKey) }
+        if ($RescueGridEnvPath) { $argList += @("-RescueGridEnvPath", $RescueGridEnvPath) }
+        $p = Start-Process -FilePath "powershell.exe" -ArgumentList $argList -Wait -PassThru
+        exit $p.ExitCode
+    }
+}
+
 $ErrorActionPreference = "Continue"
 $host.UI.RawUI.WindowTitle = "Restor-PC RescueGrid - WinPE Atelier"
 $script:RescueGridGuiMode = $false
@@ -553,22 +573,56 @@ function Invoke-Report {
 }
 
 function Invoke-Reinstall {
-    Show-Menu "Preparation reinstallation"
-    
-    Write-Host "=== AVANT REINSTALLATION ===" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "IMPORTANT :" -ForegroundColor Yellow
-    Write-Host "1. Effectuer d'abord un diagnostic complet (option 1)" -ForegroundColor White
-    Write-Host "2. Sauvegarder le profil utilisateur (option 2)" -ForegroundColor White
-    Write-Host "3. Verifier que le backup est complet" -ForegroundColor White
-    Write-Host "4. Verifier le risque disque" -ForegroundColor White
-    Write-Host ""
-    Write-Host "Reinstallation Windows :" -ForegroundColor Cyan
-    Write-Host "  - Monter l'ISO Windows avec :" -ForegroundColor Gray
-    Write-Host "    dism /Mount-Image /ImageFile:X:\sources\install.wim /index:1 /MountDir:C:\mount" -ForegroundColor Gray
-    Write-Host "  - Lancer setup.exe depuis le lecteur DVD/ISO monte" -ForegroundColor Gray
-    Write-Host ""
-    
+    Show-Menu "Installer Windows"
+    $installScript = Join-Path $PSScriptRoot "Start-WindowsInstall.ps1"
+    if (Test-Path -LiteralPath $installScript) {
+        . $installScript
+        if ($script:RescueGridGuiMode) {
+            script:Invoke-WindowsInstallGui
+        } else {
+            $cands = @(script:Find-WindowsSetupCandidates)
+            if ($cands.Count -eq 0) {
+                Write-Host "Aucun ISO / setup trouve." -ForegroundColor Yellow
+                Write-Host "Place un fichier .iso dans RescueGrid\iso\" -ForegroundColor Gray
+                Write-Host "OU extrait l'ISO dans RescueGrid\windows_setup\ (avec setup.exe)" -ForegroundColor Gray
+                Pause
+                return
+            }
+            Write-Host "Sources trouvees :" -ForegroundColor Cyan
+            for ($i = 0; $i -lt $cands.Count; $i++) {
+                Write-Host ("  {0}. {1}" -f ($i + 1), $cands[$i].Label)
+            }
+            $idx = Read-Host "Choisir (1-$($cands.Count))"
+            if (-not $idx) { return }
+            $sel = $cands[[int]$idx - 1]
+            try {
+                if ($sel.Type -eq "folder") {
+                    script:Start-WindowsSetupFromPath -SetupExe $sel.Path
+                } else {
+                    Write-Host "Montage ISO..." -ForegroundColor Cyan
+                    $mount = script:Mount-WindowsIso -IsoPath $sel.Path
+                    if (-not $mount) {
+                        Write-Host "Montage ISO impossible en WinPE." -ForegroundColor Red
+                        Write-Host "Extrais l'ISO dans RescueGrid\windows_setup\ puis reessaie." -ForegroundColor Yellow
+                        Pause
+                        return
+                    }
+                    $setup = script:Find-SetupExeOnDrive -DriveRoot $mount
+                    if (-not $setup) {
+                        Write-Host "setup.exe introuvable dans $mount" -ForegroundColor Red
+                        Pause
+                        return
+                    }
+                    script:Start-WindowsSetupFromPath -SetupExe $setup
+                }
+                Write-Host "setup.exe lance. Suis l'assistant Windows." -ForegroundColor Green
+            } catch {
+                Write-Host "[ERREUR] $_" -ForegroundColor Red
+            }
+        }
+    } else {
+        Write-Host "Start-WindowsInstall.ps1 manquant." -ForegroundColor Red
+    }
     Pause
 }
 
@@ -686,6 +740,92 @@ function Invoke-SystemCheck {
     Pause
 }
 
+function Get-RescueGridRoot {
+    # Dossier RescueGrid (parent de agent\windows)
+    if ($PSScriptRoot) {
+        $candidate = Resolve-Path (Join-Path $PSScriptRoot "..\..") -ErrorAction SilentlyContinue
+        if ($candidate -and (Test-Path (Join-Path $candidate "agent\windows"))) {
+            return $candidate.Path
+        }
+        $candidate2 = Resolve-Path (Join-Path $PSScriptRoot "..") -ErrorAction SilentlyContinue
+        if ($candidate2 -and (Test-Path (Join-Path $candidate2 "agent\windows"))) {
+            return $candidate2.Path
+        }
+    }
+    return $null
+}
+
+function Show-ToolsLauncherGui {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $root = Get-RescueGridRoot
+    $tools = if ($root) { Join-Path $root "tools" } else { $null }
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Boite a outils RescueGrid"
+    $form.Size = New-Object System.Drawing.Size(560, 480)
+    $form.StartPosition = "CenterScreen"
+    $form.BackColor = [System.Drawing.Color]::FromArgb(8, 20, 38)
+    $form.ForeColor = [System.Drawing.Color]::White
+
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = if ($tools) { "Logiciels dans : $tools" } else { "Dossier tools introuvable" }
+    $lbl.Location = New-Object System.Drawing.Point(16, 12)
+    $lbl.Size = New-Object System.Drawing.Size(520, 36)
+    $form.Controls.Add($lbl)
+
+    $list = New-Object System.Windows.Forms.ListBox
+    $list.Location = New-Object System.Drawing.Point(16, 56)
+    $list.Size = New-Object System.Drawing.Size(520, 300)
+    $list.BackColor = [System.Drawing.Color]::FromArgb(13, 30, 52)
+    $list.ForeColor = [System.Drawing.Color]::White
+    $exes = @()
+    if ($tools -and (Test-Path $tools)) {
+        $exes = @(Get-ChildItem -LiteralPath $tools -Recurse -Include *.exe, *.cmd, *.bat -File -ErrorAction SilentlyContinue |
+            Sort-Object FullName)
+        foreach ($e in $exes) {
+            [void]$list.Items.Add($e.FullName.Substring($tools.Length).TrimStart('\', '/'))
+        }
+    }
+    if ($list.Items.Count -eq 0) {
+        [void]$list.Items.Add("(Aucun outil - place des portables dans RescueGrid\tools)")
+    }
+    $form.Controls.Add($list)
+
+    $run = New-Object System.Windows.Forms.Button
+    $run.Text = "Lancer"
+    $run.Location = New-Object System.Drawing.Point(16, 380)
+    $run.Size = New-Object System.Drawing.Size(120, 36)
+    $run.BackColor = [System.Drawing.Color]::FromArgb(10, 132, 255)
+    $run.ForeColor = [System.Drawing.Color]::White
+    $run.FlatStyle = "Flat"
+    $run.Add_Click({
+        if ($exes.Count -eq 0 -or $list.SelectedIndex -lt 0) { return }
+        $target = $exes[$list.SelectedIndex].FullName
+        try { Start-Process -FilePath $target -WorkingDirectory (Split-Path $target) }
+        catch { [System.Windows.Forms.MessageBox]::Show("$_", "Outil") | Out-Null }
+    }.GetNewClosure())
+    $form.Controls.Add($run)
+
+    $open = New-Object System.Windows.Forms.Button
+    $open.Text = "Ouvrir dossier"
+    $open.Location = New-Object System.Drawing.Point(150, 380)
+    $open.Size = New-Object System.Drawing.Size(140, 36)
+    $open.Add_Click({
+        if ($tools -and (Test-Path $tools)) { Start-Process explorer.exe $tools }
+        elseif ($root) { Start-Process explorer.exe $root }
+    }.GetNewClosure())
+    $form.Controls.Add($open)
+
+    $close = New-Object System.Windows.Forms.Button
+    $close.Text = "Fermer"
+    $close.Location = New-Object System.Drawing.Point(420, 380)
+    $close.Size = New-Object System.Drawing.Size(116, 36)
+    $close.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $form.Controls.Add($close)
+
+    [void]$form.ShowDialog()
+}
+
 function Show-RescueGridGui {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -693,8 +833,8 @@ function Show-RescueGridGui {
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Restor-PC RescueGrid"
-    $form.Size = New-Object System.Drawing.Size(540, 860)
-    $form.MinimumSize = New-Object System.Drawing.Size(520, 680)
+    $form.Size = New-Object System.Drawing.Size(540, 980)
+    $form.MinimumSize = New-Object System.Drawing.Size(520, 720)
     $form.StartPosition = "CenterScreen"
     $form.BackColor = [System.Drawing.Color]::FromArgb(4, 11, 20)
     $form.ForeColor = [System.Drawing.Color]::FromArgb(238, 247, 255)
@@ -762,11 +902,16 @@ function Show-RescueGridGui {
         @{ Text = "3. Analyse SMART disques"; Fn = { Invoke-SMART } },
         @{ Text = "4. Reparation boot Windows"; Fn = { Invoke-BootRepair } },
         @{ Text = "5. Export rapport seul"; Fn = { Invoke-Report } },
-        @{ Text = "6. Reinstallation (preparation)"; Fn = { Invoke-Reinstall } },
+        @{ Text = "6. Installer Windows (ISO / setup)"; Fn = { Invoke-Reinstall } },
         @{ Text = "7. Analyser Windows hors ligne"; Fn = { Invoke-Offline } },
         @{ Text = "8. Verifier lintegrite systeme"; Fn = { Invoke-SystemCheck } },
         @{ Text = "9. Historique local (ZIP / score)"; Fn = { Show-LocalHistoryGui -BackupRoot $BackupRoot } },
-        @{ Text = "10. Sync rapports vers dashboard"; Fn = { Sync-LocalZipsToDashboard -BackupRoot $BackupRoot -UploadUrl $DashboardUploadUrl -UploadApiKey $UploadApiKey } }
+        @{ Text = "10. Sync rapports vers dashboard"; Fn = { Sync-LocalZipsToDashboard -BackupRoot $BackupRoot -UploadUrl $DashboardUploadUrl -UploadApiKey $UploadApiKey } },
+        @{ Text = "11. Boite a outils (logiciels USB)"; Fn = { Show-ToolsLauncherGui } },
+        @{ Text = "12. Explorateur de fichiers"; Fn = {
+            $root = Get-RescueGridRoot
+            if ($root) { Start-Process explorer.exe $root } else { Start-Process explorer.exe }
+        } }
     )
 
     foreach ($a in $actions) {
@@ -805,8 +950,31 @@ function Show-RescueGridGui {
     if ($logoPath -and $pic -and $pic.Image) { $pic.Image.Dispose() }
 }
 
-# Entree : GUI sous Windows live (sauf -Console), menu texte sinon / WinPE.
-$useGui = $Gui -or ((-not $Console) -and (-not (Test-IsWinPE)))
+# Entree : GUI par defaut (WinPE + Windows live). -Console force le menu texte.
+$useGui = (-not $Console) -or $Gui
+if ($Console) { $useGui = $false }
+
+# WinPE : GUI d'abord, puis menu texte si echec (ne pas quitter silencieux).
+if ((Test-IsWinPE) -and (-not $Console) -and $useGui) {
+    try {
+        $script:RescueGridGuiMode = $true
+        Show-RescueGridGui
+        return
+    } catch {
+        $err = $_.Exception.Message
+        Write-Host "[WinPE] GUI : $err" -ForegroundColor Yellow
+        try {
+            Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+            [System.Windows.Forms.MessageBox]::Show(
+                "Impossible d'ouvrir la GUI RescueGrid.`n$err`n`nOuverture du menu texte...",
+                "RescueGrid"
+            ) | Out-Null
+        } catch {}
+        $script:RescueGridGuiMode = $false
+        $useGui = $false
+    }
+}
+
 if ($useGui) {
     try {
         $script:RescueGridGuiMode = $true
@@ -855,7 +1023,7 @@ do {
     Write-Host " 3. Analyse SMART disques" -ForegroundColor White
     Write-Host " 4. Reparation boot Windows" -ForegroundColor White
     Write-Host " 5. Export rapport seul" -ForegroundColor White
-    Write-Host " 6. Reinstallation (preparation)" -ForegroundColor White
+    Write-Host " 6. Installer Windows (ISO / setup)" -ForegroundColor White
     Write-Host " 7. Analyser Windows hors ligne" -ForegroundColor White
     Write-Host " 8. Verifier lintegrite systeme" -ForegroundColor White
     Write-Host " 9. Quitter" -ForegroundColor Red

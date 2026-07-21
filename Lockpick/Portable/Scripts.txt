@@ -1,0 +1,242 @@
+Launcher Batch Script Code
+
+___________________________________________________________________________________________
+
+@ECHO OFF
+TIMEOUT /T 1 /NOBREAK > NUL
+IF DEFINED "%PROCESSOR_ARCHITEW6432%" IF "%PROCESSOR_ARCHITECTURE%"=="x86" GOTO :32-bit
+ECHO %PROCESSOR_ARCHITECTURE% | FINDSTR "64" > NUL && GOTO :64-bit
+
+:32-bit
+start MInstAll\MInst.exe "{Patch}\profiles\x86_Utilities.ini"
+GOTO :EXIT
+
+:64-bit
+start MInstAll\MInst.exe "{Patch}\profiles\x64_Utilities.ini"
+GOTO :EXIT
+
+:EXIT
+exit
+
+
+
+___________________________________________________________________________________________
+
+
+
+1. Password reset Simplix
+
+
+;!@Install@!UTF-8!
+InstallPath="%ProgramFiles%\\PassReset"
+GUIMode="2"
+OverwriteMode="10"
+RunProgram="x86:PassReset.exe"
+RunProgram="x64:PassReset64.exe"
+Delete="%ProgramFiles%\\PassReset"
+;!@InstallEnd@!
+
+
+
+2. PC Unlocker x64
+
+;!@Install@!UTF-8!
+InstallPath="%ProgramFiles%\\pcunlocker"
+GUIMode="2"
+OverwriteMode="2+8"
+RunProgram="pcunlocker64.exe"
+;!@InstallEnd@!
+
+
+3. Windows Login Unlocker
+
+;!@Install@!UTF-8!
+InstallPath="%ProgramFiles%\\WindowsLoginUnlocker"
+GUIMode="2"
+OverwriteMode="2+8"
+RunProgram="WLU.exe"
+Delete="%ProgramFiles%\\WindowsLoginUnlocker"
+;!@InstallEnd@!
+
+
+4. Passcaoe Reset windows password
+
+
+;!@Install@!UTF-8!
+InstallPath="X:\\Program Files\\rwp"
+GUIMode="2"
+OverwriteMode="2+8"
+RunProgram="rwp_.exe"
+Delete="X:\\Program Files\\rwp"
+;!@InstallEnd@!
+
+
+5. OO User Manager
+
+;!@Install@!UTF-8!
+InstallPath="X:\\OOUserManager"
+GUIMode="2"
+OverwriteMode="2+8"
+RunProgram="OOStarting.exe"
+;!@InstallEnd@!
+
+
+
+
+
+Done Scripts
+
+
+1. Windows Login Unlocker
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\WindowsLoginUnlocker"
+RunProgram="WLU_x64.exe"
+Delete="%ProgramFiles%\\WindowsLoginUnlocker"
+;!@InstallEnd@!
+
+
+2. PC Unlocker
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\PCUnlocker"
+RunProgram="PCUnlocker_x86.exe"
+Delete="%ProgramFiles%\\PCUnlocker"
+;!@InstallEnd@!
+
+3. Bypass Windows Password
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\BypassWinPassword"
+RunProgram="Bwp_x64.exe"
+Delete="%ProgramFiles%\\BypassWinPassword"
+;!@InstallEnd@!
+
+
+4. PassReset Simplix
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\PassReset"
+RunProgram="PassReset_x64.exe"
+Delete="%ProgramFiles%\\PassReset"
+;!@InstallEnd@!
+
+
+5. NT Password Edit
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\NTPWReset"
+RunProgram="ntpwedit_x64.exe"
+Delete="%ProgramFiles%\\NTPWReset"
+;!@InstallEnd@!
+
+
+
+6. FastBoot Detect
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\FastbootDetect"
+RunProgram="FastBootDetect32.exe"
+Delete="%ProgramFiles%\\FastbootDetect"
+;!@InstallEnd@!
+
+7.Reset Hiber Fill
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\ResetHiberFill"
+RunProgram="resethiberfil_x86_en.exe"
+Delete="%ProgramFiles%\\ResetHiberFill"
+;!@InstallEnd@!
+
+
+8. OO USer Manager
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\OOUserManager"
+RunProgram="OOStarting.exe"
+Delete="%ProgramFiles%\\OOUserManager"
+;!@InstallEnd@!
+
+9. Reset Windows Password
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\RWP"
+RunProgram="rwp_.exe"
+Delete="%ProgramFiles%\\RWP"
+;!@InstallEnd@!
+
+10. Active Password Changer
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\Active"
+RunProgram="PasswordChanger.exe"
+Delete="%ProgramFiles%\\Active"
+;!@InstallEnd@!
+
+
+10.1 SQl Server Password Changer
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="%temp%\\SQLPass"
+RunProgram="SQLServerPasswordChangerPortable.exe"
+Delete="%temp%\\SQLPass"
+;!@InstallEnd@!
+
+
+11. Final Script
+
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0"
+MiscFlags="4"
+InstallPath="%ProgramFiles%\\AIOWinPassSolution"
+RunProgram="x86:MInst.exe {Patch}\profiles\x86_Utilities.ini"
+RunProgram="x64:MInst.exe {Patch}\profiles\x64_Utilities.ini"
+Delete="%ProgramFiles%\\AIOWinPassSolution"
+;!@InstallEnd@!
+
+12. RWP
+
+;!@Install@!UTF-8!
+GUIMode="2"
+OverwriteMode="0+8"
+MiscFlags="4"
+InstallPath="X:\\Apps"
+RunProgram="rwp_.exe"
+Delete="X:\\Apps"
+;Project created in program 7z SFX Constructor
+;!@InstallEnd@!

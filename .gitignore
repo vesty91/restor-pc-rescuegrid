@@ -42,3 +42,5 @@ logs/
 # Artefacts d'intervention générés par l'agent (tests locaux, imports manuels)
 /Intervention_*/
 /Intervention_*.zip
+
+rescuegrid.db
