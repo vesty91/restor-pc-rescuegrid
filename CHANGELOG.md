@@ -1,5 +1,12 @@
 # Changelog
 
+## v12.6.3 — Encodages UTF-8 + naming Docker unifié
+
+- **Mojibake** corrigé dans `run_tests.py` et `install_dependencies.ps1` ;
+  `chcp 65001` + `PYTHONUTF8=1` en tête des `.bat`.
+- **Docker** : `name: rescuegrid`, image explicite `rescuegrid-backend:latest`
+  (plus de `restorpc-rescuegrid` / service `dashboard` en dev).
+
 ## v12.6.2 — Proxys de confiance XFF
 
 - **`TRUSTED_PROXY_CIDRS`** : liste CIDR configurable ; défauts resserrés

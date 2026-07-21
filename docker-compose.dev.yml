@@ -9,8 +9,11 @@
 # .env.example vers .env à la racine du projet) et n'ont plus de valeur par
 # défaut en dur ici : sans .env, docker compose refuse de démarrer plutôt que
 # d'utiliser un mot de passe connu/documenté.
+name: rescuegrid-dev
+
 services:
-  dashboard:
+  backend:
+    image: rescuegrid-backend:dev
     build:
       context: ./backend
       args:

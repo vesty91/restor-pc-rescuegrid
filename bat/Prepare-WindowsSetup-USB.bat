@@ -1,4 +1,6 @@
 @echo off
+chcp 65001 >nul
+set PYTHONUTF8=1
 title RescueGrid - Preparer install Windows sur cle FAT32
 cd /d "%~dp0.."
 

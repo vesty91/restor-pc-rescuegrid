@@ -1,4 +1,6 @@
 @echo off
+chcp 65001 >nul
+set PYTHONUTF8=1
 title Restor-PC - Pack USB pret a l'emploi
 cd /d "%~dp0.."
 net session >nul 2>&1

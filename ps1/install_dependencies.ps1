@@ -8,11 +8,15 @@
 #>
 
 $ErrorActionPreference = "Stop"
+try {
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+    $OutputEncoding = [Console]::OutputEncoding
+} catch {}
 $rootDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
 # Python 3.12 uniquement (image Docker = python:3.12-slim-bookworm). Un simple
-# "python" du PATH peut pointer vers 3.11/3.13/3.14 : on vÃ©rifie la version
-# rÃ©elle, pas seulement l'existence de la commande.
+# "python" du PATH peut pointer vers 3.11/3.13/3.14 : on vérifie la version
+# réelle, pas seulement l'existence de la commande.
 function Test-RescueGridPythonVersion {
     param([string]$VersionText)
     return $VersionText -match "^Python 3\.12(\.|$)"
@@ -47,7 +51,7 @@ function Get-RescueGridPython {
         }
     }
 
-    throw "Python 3.12 introuvable (seule version supportÃ©e). Installe-le avec : winget install Python.Python.3.12"
+    throw "Python 3.12 introuvable (seule version supportée). Installe-le avec : winget install Python.Python.3.12"
 }
 
 Write-Host "=============================================" -ForegroundColor Cyan
@@ -72,10 +76,10 @@ if (-not (Test-Path $backendDir)) {
 $venvPythonExe = Join-Path $venvPath "Scripts\python.exe"
 
 if ((Test-Path $venvPath) -and (Test-Path $venvPythonExe)) {
-    # Le .venv existe dÃ©jÃ  : vÃ©rifie qu'il a bien Ã©tÃ© crÃ©Ã© avec Python 3.12
-    # et pas une autre version (3.11/3.13/3.14 devenue le "python" par dÃ©faut
-    # du PATH) â€” sinon les dÃ©pendances compilÃ©es (psycopg, cryptography...)
-    # peuvent Ã©chouer Ã  l'installation ou au runtime de faÃ§on peu explicite.
+    # Le .venv existe déjà : vérifie qu'il a bien été créé avec Python 3.12
+    # et pas une autre version (3.11/3.13/3.14 devenue le "python" par défaut
+    # du PATH) — sinon les dépendances compilées (psycopg, cryptography...)
+    # peuvent échouer à l'installation ou au runtime de façon peu explicite.
     $venvVersionText = (& $venvPythonExe --version 2>&1).ToString().Trim()
     if (-not (Test-RescueGridPythonVersion $venvVersionText)) {
         Write-Host " INCOMPATIBLE ($venvVersionText) -> recreation..." -ForegroundColor Yellow
@@ -109,8 +113,8 @@ $requirementsPath = Join-Path $backendDir "requirements.txt"
 
 if ((Test-Path $pythonVenvPath) -and (Test-Path $requirementsPath)) {
     try {
-        # PowerShell n'Ã©lÃ¨ve pas automatiquement un exit code pip non nul :
-        # sans contrÃ´le de $LASTEXITCODE, le script affichait "OK" aprÃ¨s un Ã©chec.
+        # PowerShell n'élève pas automatiquement un exit code pip non nul :
+        # sans contrôle de $LASTEXITCODE, le script affichait "OK" après un échec.
         & $pythonVenvPath -m pip install --upgrade pip | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Echec de la mise a jour de pip (code $LASTEXITCODE)."

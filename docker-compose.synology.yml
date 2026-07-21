@@ -2,7 +2,11 @@ version: "3.8"
 
 # ===== Restor-PC RescueGrid — Stack Synology / NAS =====
 # Déploiement production avec PostgreSQL, MinIO (S3), Nginx reverse proxy
-# Usage : docker-compose -f docker-compose.synology.yml up -d
+# Usage : docker compose -f docker-compose.synology.yml up -d
+#
+# Project name fixe (`name:`) → image `rescuegrid-backend` et réseau
+# `rescuegrid_rescuegrid` quel que soit le dossier hôte (aligné avec
+# scripts/nas_auto_deploy.sh IMAGE_REPO=rescuegrid-backend).
 #
 # Sécurité : aucun mot de passe par défaut n'est fourni ci-dessous (syntaxe
 # ${VAR:?message} = docker-compose refuse de démarrer si la variable n'est pas
@@ -10,6 +14,8 @@ version: "3.8"
 # valeurs uniques et fortes pour POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD,
 # SECRET_KEY, ADMIN_PASSWORD, PGADMIN_PASSWORD avant le premier démarrage —
 # voir .env.example.
+
+name: rescuegrid
 
 services:
   # === Base de données PostgreSQL ===
@@ -83,6 +89,7 @@ services:
 
   # === Backend FastAPI ===
   backend:
+    image: rescuegrid-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -107,7 +114,7 @@ services:
       # Surcharge runtime : un ARG Docker vide ("") écrase le défaut Dockerfile
       # et faisait planter FastAPI (version OpenAPI vide). Toujours fournir une
       # valeur non vide ici, même si le build a échoué à injecter VERSION.
-      APP_VERSION: "${APP_VERSION:-12.6.2}"
+      APP_VERSION: "${APP_VERSION:-12.6.3}"
       # false par defaut pour ne pas casser la connexion tant que HTTPS n'est pas
       # configure sur nginx (etape 5 de docs/SYNOLOGY_DEPLOY.md) — passer a true
       # dans .env une fois un certificat TLS actif.
