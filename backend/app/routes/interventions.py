@@ -540,22 +540,34 @@ def intervention_label(intervention_id: int, request: Request, session: Session 
     # nom machine, numéro de série BIOS) sont échappées avant insertion dans le
     # HTML — sans quoi un nom de client contenant du HTML/JS serait exécuté dans
     # le navigateur du technicien qui imprime l'étiquette (XSS stockée).
+    from ..helpers import qr_png_data_uri
+
     client_name = html.escape(client.name) if client else "—"
     machine_name = html.escape(intervention.machine_name or (machine.machine_name if machine else "—"))
     bios_serial = html.escape(intervention.bios_serial or "—")
     status_value = html.escape(intervention.status or "")
+    base = str(request.base_url).rstrip("/")
+    scan_url = f"{base}/intervention/{intervention.id}"
+    if machine:
+        scan_url = f"{base}/d/{machine.id}"
+    qr_uri = qr_png_data_uri(scan_url)
     label_html = f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Étiquette</title>
 <style>body{{font-family:Segoe UI,Arial,sans-serif;margin:20px}}
-.label{{width:95mm;border:2px solid #111;border-radius:8px;padding:12px}}
+.label{{width:105mm;border:2px solid #111;border-radius:8px;padding:12px;display:grid;grid-template-columns:1fr 28mm;gap:10px}}
 h1{{font-size:16px;margin:0 0 8px;color:#0a84ff}} .id{{font-size:22px;font-weight:800}}
-p{{margin:4px 0;font-size:13px}} @media print{{button{{display:none}}}}</style>
+p{{margin:4px 0;font-size:13px}} .qr{{width:26mm;height:26mm}} .hint{{font-size:10px;color:#555}}
+@media print{{button{{display:none}}}}</style>
 </head><body><button onclick="print()">Imprimer</button><div class="label">
+<div>
 <h1>Restor-PC RescueGrid</h1><div class="id">INT-{intervention.id:06d}</div>
 <p><strong>Client :</strong> {client_name}</p>
 <p><strong>Machine :</strong> {machine_name}</p>
 <p><strong>BIOS :</strong> {bios_serial}</p>
 <p><strong>Statut :</strong> {status_value}</p>
 <p><strong>Date :</strong> {intervention.created_at.strftime('%d/%m/%Y %H:%M')}</p>
+<p class="hint">Scan QR → fiche machine / dépôt</p>
+</div>
+<img class="qr" src="{qr_uri}" alt="QR">
 </div></body></html>"""
     return HTMLResponse(label_html)
 

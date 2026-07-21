@@ -4,12 +4,16 @@ Plateforme atelier pour diagnostic PC, suivi d'interventions, clients, machines,
 
 ## Démarrage rapide
 
+Double-clic sur **`Install-RescueGrid.bat`** (installe les dépendances, prépare `.env`, migre la BDD et lance le dashboard).
+
+Ou en ligne de commande :
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File install_dependencies.ps1
-.\start_dashboard.bat
+powershell -ExecutionPolicy Bypass -File ps1\Install-RescueGrid.ps1
 ```
 
-Dashboard : http://localhost:8000
+Dashboard : http://localhost:8000  
+Page produit : http://localhost:8000/produit
 
 Login par défaut : `admin` / mot de passe défini dans `.env` (`ADMIN_PASSWORD`), ou généré aléatoirement et affiché une seule fois dans les logs serveur si `.env` ne le définit pas. Pour lancer l'app dans Docker en local (SQLite, sans passer par les scripts `.bat`), copier `.env.example` vers `.env` puis `docker compose -f docker-compose.dev.yml up` — ce fichier refuse de démarrer sans `SECRET_KEY`/`ADMIN_PASSWORD` définis dans `.env` (plus de mot de passe par défaut en dur).
 

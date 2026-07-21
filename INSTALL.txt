@@ -1,0 +1,31 @@
+Restor-PC RescueGrid — Installation rapide
+==========================================
+
+1. Double-cliquer sur Install-RescueGrid.bat
+   (ou : powershell -ExecutionPolicy Bypass -File ps1\Install-RescueGrid.ps1)
+
+2. Attendre la fin de l'installation des dependances Python 3.12.
+
+3. Le dashboard demarre automatiquement :
+   http://localhost:8000
+
+4. Page produit / tarifs :
+   http://localhost:8000/produit
+
+Connexion
+---------
+Identifiant : admin
+Mot de passe : defini dans .env (ADMIN_PASSWORD), ou genere au premier
+demarrage (voir les logs serveur).
+
+Configuration optionnelle
+-------------------------
+Copier / editer .env et backend\.env pour SMTP, Stripe, Twilio (SMS RDV).
+
+Pack USB WinPE
+--------------
+Voir bat\Build-ReadyUSB.bat (necessite Windows ADK + WinPE).
+
+Documentation
+-------------
+docs\TECHNICIAN_MANUAL.md

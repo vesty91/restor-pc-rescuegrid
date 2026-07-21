@@ -245,6 +245,8 @@ class Appointment(Base):
     start_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     end_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="scheduled", server_default="scheduled")
+    reminder_opt_in: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    sms_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     client: Mapped["Client | None"] = relationship()

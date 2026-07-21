@@ -64,7 +64,11 @@
         <input type="checkbox" name="notify_sms" value="on" {% if sms_configured %}checked{% endif %} style="width:auto">
         Envoyer aussi un SMS / WhatsApp (Twilio)
       </label>
-      <p class="hint">Email : fiche client. SMS : téléphone client + variables TWILIO_* dans .env{% if not sms_configured %} (non configuré pour l’instant){% endif %}.</p>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:600">
+        <input type="checkbox" name="reminder_opt_in" value="on" checked style="width:auto">
+        Rappel automatique J-1 (email + SMS/WhatsApp)
+      </label>
+      <p class="hint">Email : fiche client. SMS : téléphone client + variables TWILIO_* dans .env{% if not sms_configured %} (non configuré pour l’instant){% endif %}. Rappels auto : <code>APPOINTMENT_REMINDER_ENABLED=true</code>.</p>
       <button style="margin-top:14px">Créer le rendez-vous</button>
     </form>
   </div>

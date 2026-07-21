@@ -11,16 +11,22 @@
 
 <div class="grid2">
   <div class="card">
+    <h2>0. Pack USB prêt à l’emploi</h2>
+    <p class="muted" style="margin-bottom:12px">Orchestrateur recommandé : structure RescueGrid + WinXShell si <code>boot.wim</code> présent + Lockpick + outils. Double-clic <code>Build-ReadyUSB.bat</code> ou :</p>
+    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\winpe\Build-ReadyUSB.ps1 -TargetDrive E: -DashboardUrl "http://192.168.1.10:8000"</pre>
+    <p class="muted" style="margin-top:8px">Cle bootable (ADK, <strong>efface</strong> la clé) : ajouter <code>-MakeBootable</code>. Voir <code>PACK_USB_README.txt</code> sur la clé.</p>
+  </div>
+  <div class="card">
     <h2>1. Créer clé USB</h2>
-    <p class="muted" style="margin-bottom:12px">Prépare une clé technicien avec scripts RescueGrid, menu WinPE et outils externes. Script unique depuis v12.3 (remplace Build-RescueGridUSB.ps1).</p>
-    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\Create-RescueGridUSB.ps1 -TargetDrive E: -DashboardUrl "http://192.168.1.10:8000" -IncludeProject</pre>
+    <p class="muted" style="margin-bottom:12px">Prépare une clé technicien avec scripts RescueGrid, menu WinPE et outils externes.</p>
+    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\winpe\Create-RescueGridUSB.ps1 -TargetDrive E: -DashboardUrl "http://192.168.1.10:8000" -IncludeProject</pre>
     <p class="muted" style="margin-top:8px">Voir <code>docs/TECHNICIAN_MANUAL.md</code> pour le détail (formatage FAT32/NTFS, copie WinPE si ADK installé).</p>
   </div>
   <div class="card">
     <h2>2. Construire l'image WinPE (ADK requis)</h2>
     <p class="muted" style="margin-bottom:12px">Génère automatiquement <code>boot.wim</code> (+ ISO optionnelle) avec PowerShell/Scripting intégrés, depuis un Windows ADK + add-on WinPE installés localement. À exécuter en administrateur.</p>
-    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\Build-RescueGridWinPE.ps1 -Force -BuildIso</pre>
-    <p class="muted" style="margin-top:8px">Puis relancer l'étape 1 avec <code>-WinPEBasePath C:\WinPE</code> pour copier <code>boot.wim</code> sur la clé.</p>
+    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\winpe\Build-RescueGridWinPE.ps1 -Force -BuildIso</pre>
+    <p class="muted" style="margin-top:8px">Puis relancer l'étape 1 avec <code>-WinPEBasePath C:\WinPE</code> pour copier <code>boot.wim</code> sur la clé, ou utiliser <code>Build-ReadyUSB.ps1 -MakeBootable</code>.</p>
   </div>
   <div class="card">
     <h2>3. Menu WinPE</h2>
@@ -30,7 +36,7 @@
   <div class="card">
     <h2>4. Serveur PXE</h2>
     <p class="muted" style="margin-bottom:12px">Boot réseau pour démarrer plusieurs machines sans clé USB.</p>
-    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\Setup-PXERescueServer.ps1</pre>
+    <pre>powershell -ExecutionPolicy Bypass -File agent\windows\winpe\Setup-PXERescueServer.ps1</pre>
   </div>
   <div class="card">
     <h2>5. Déploiement Synology</h2>

@@ -67,6 +67,29 @@ def status_label_fr(status: str | None) -> str:
     return STATUS_LABELS_FR.get(key, str(status).replace("_", " ").capitalize())
 
 
+def qr_png_data_uri(payload: str, *, box_size: int = 4, border: int = 2) -> str:
+    """Génère un QR code PNG en data-URI (étiquettes atelier / liens courts)."""
+    import qrcode
+
+    qr = qrcode.QRCode(box_size=box_size, border=border)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def safe_next_path(raw: str | None) -> str | None:
+    """Autorise uniquement un chemin relatif local (/foo) — anti open-redirect."""
+    if not raw:
+        return None
+    value = raw.strip()
+    if not value.startswith("/") or value.startswith("//") or "://" in value or "\\" in value:
+        return None
+    return value
+
+
 def format_date_fr(value, with_weekday: bool = False) -> str:
     """Formate une date/datetime en français (évite les jours anglais du locale NAS)."""
     if value is None:

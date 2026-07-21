@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Restor-PC RescueGrid — Atelier PC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg0: #020812;
+      --bg1: #06101d;
+      --text: #eef7ff;
+      --muted: #93a9c5;
+      --blue: #0a84ff;
+      --blue2: #00a3ff;
+      --line: rgba(27, 54, 86, 0.9);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Source Sans 3", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(ellipse 80% 60% at 70% 20%, rgba(10, 132, 255, 0.22), transparent 55%),
+        radial-gradient(ellipse 50% 40% at 10% 90%, rgba(0, 163, 255, 0.12), transparent 50%),
+        linear-gradient(160deg, var(--bg0) 0%, var(--bg1) 45%, #02050b 100%);
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.1rem 6vw;
+      border-bottom: 1px solid transparent;
+    }
+    .nav a { color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.95rem; }
+    .nav a:hover { color: var(--text); }
+    .hero {
+      min-height: calc(100vh - 64px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 3rem 6vw 4rem;
+      max-width: 920px;
+    }
+    .brand {
+      font-family: Outfit, sans-serif;
+      font-weight: 800;
+      font-size: clamp(2.4rem, 7vw, 4.2rem);
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+      background: linear-gradient(120deg, #fff 20%, var(--blue2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      margin-bottom: 1.25rem;
+      animation: rise 0.7s ease-out both;
+    }
+    .headline {
+      font-family: Outfit, sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.25rem, 3.2vw, 1.85rem);
+      letter-spacing: -0.02em;
+      max-width: 28ch;
+      margin-bottom: 0.85rem;
+      animation: rise 0.7s ease-out 0.08s both;
+    }
+    .lead {
+      color: var(--muted);
+      font-size: 1.1rem;
+      max-width: 42ch;
+      line-height: 1.45;
+      margin-bottom: 1.75rem;
+      animation: rise 0.7s ease-out 0.16s both;
+    }
+    .ctas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      animation: rise 0.7s ease-out 0.24s both;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.85rem 1.35rem;
+      border-radius: 12px;
+      font-family: Outfit, sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-primary {
+      background: linear-gradient(135deg, #0875ff, #005bd9);
+      color: #fff;
+      box-shadow: 0 12px 28px rgba(10, 132, 255, 0.28);
+    }
+    .btn-ghost {
+      background: rgba(8, 20, 38, 0.6);
+      border-color: var(--line);
+      color: var(--text);
+    }
+    .pricing {
+      margin-top: 3.5rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--line);
+      animation: rise 0.7s ease-out 0.32s both;
+    }
+    .pricing h2 {
+      font-family: Outfit, sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .plans {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      max-width: 560px;
+    }
+    .plan {
+      padding: 1.1rem 1.2rem;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(13, 27, 47, 0.55);
+    }
+    .plan strong {
+      display: block;
+      font-family: Outfit, sans-serif;
+      font-size: 1.15rem;
+      margin-bottom: 0.25rem;
+    }
+    .plan .price {
+      font-family: Outfit, sans-serif;
+      font-weight: 800;
+      font-size: 1.6rem;
+      color: var(--blue2);
+    }
+    .plan p { color: var(--muted); font-size: 0.9rem; margin-top: 0.4rem; }
+    .install-hint {
+      margin-top: 2rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+      max-width: 48ch;
+    }
+    .install-hint code {
+      background: #040b14;
+      padding: 0.15rem 0.45rem;
+      border-radius: 5px;
+      color: #9bd2ff;
+      font-size: 0.85em;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (max-width: 560px) {
+      .hero { padding: 2rem 5vw 3rem; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <span style="font-family:Outfit,sans-serif;font-weight:800;letter-spacing:-0.03em;">RESTOR-PC</span>
+    <a href="/login">Connexion</a>
+  </nav>
+
+  <main class="hero">
+    <p class="brand">RescueGrid</p>
+    <h1 class="headline">L’atelier PC, du dépôt au paiement.</h1>
+    <p class="lead">Diagnostic, USB WinPE, devis, factures et suivi client — une plateforme pour techniciens indépendants et ateliers.</p>
+    <div class="ctas">
+      <a class="btn btn-primary" href="/login">Démarrer</a>
+      <a class="btn btn-ghost" href="#tarifs">Voir les tarifs</a>
+    </div>
+
+    <section class="pricing" id="tarifs">
+      <h2>Tarifs indicatifs</h2>
+      <div class="plans">
+        <div class="plan">
+          <strong>Starter</strong>
+          <div class="price">399 €</div>
+          <p>Licence à vie — 1 atelier, mises à jour majeures incluses la 1re année.</p>
+        </div>
+        <div class="plan">
+          <strong>Pro</strong>
+          <div class="price">29 €<span style="font-size:0.9rem;font-weight:600;color:var(--muted)"> / mois</span></div>
+          <p>Abonnement — support prioritaire, SMS RDV, pack USB WinPE.</p>
+        </div>
+      </div>
+      <p class="install-hint">Installation locale : double-clic sur <code>Install-RescueGrid.bat</code> (dépendances + dashboard).</p>
+    </section>
+  </main>
+</body>
+</html>

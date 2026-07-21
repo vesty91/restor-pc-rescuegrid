@@ -6,9 +6,35 @@ Ce manuel remplace les références à `README_LANCEMENT.md` /
 clé USB technicien : `Create-RescueGridUSB.ps1` (`Build-RescueGridUSB.ps1`
 reste disponible mais n'est plus qu'un alias de compatibilité qui le redirige).
 
+## 0. Pack USB prêt à l'emploi (recommandé)
+
+Orchestrateur unique (Admin recommandé) :
+
+```powershell
+# Depuis la racine du projet, ou double-clic Build-ReadyUSB.bat
+powershell -ExecutionPolicy Bypass -File agent\windows\winpe\Build-ReadyUSB.ps1 `
+    -TargetDrive E: `
+    -DashboardUrl "http://192.168.1.10:8000"
+```
+
+Ce script enchaîne :
+
+1. `Create-RescueGridUSB.ps1` (structure + agent + config)
+2. Si `E:\sources\boot.wim` existe → `Apply-WinPE-WinXShell.ps1` (bureau Strelec)
+3. Copie `Lockpick\` → `RescueGrid\Lockpick\` si présent
+4. Copie `tools\` projet si non vide
+5. Écrit `PACK_USB_README.txt` à la racine de la clé
+
+Pour **rendre la clé bootable** (ADK + WinPE, **efface** la clé) :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File agent\windows\winpe\Build-ReadyUSB.ps1 `
+    -TargetDrive E: -DashboardUrl "http://192.168.1.10:8000" -MakeBootable
+```
+
 ## 1. Construire la clé USB
 
-Depuis `agent\windows\`, en PowerShell (administrateur requis si `-Format`) :
+Depuis `agent\windows\winpe\`, en PowerShell (administrateur requis si `-Format`) :
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File Create-RescueGridUSB.ps1 `

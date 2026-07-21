@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bon de dépôt — {{ machine_label }}</title>
+  <style>
+    :root{color-scheme:dark;--bg:#040b14;--text:#eef7ff;--muted:#93a9c5;--blue:#0a84ff;--line:#1b3656;}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:Segoe UI,Arial,sans-serif;color:var(--text);min-height:100vh;
+      display:flex;align-items:center;justify-content:center;padding:24px;
+      background:linear-gradient(135deg,#020812,#06101d 55%,#02050b);
+    }
+    .card{
+      width:min(420px,96vw);background:rgba(13,27,47,.95);border:1px solid var(--line);
+      border-radius:16px;padding:28px 24px;text-align:center;
+    }
+    .brand{color:#00a3ff;font-weight:800;letter-spacing:-.03em;margin-bottom:10px}
+    h1{font-size:1.25rem;margin-bottom:8px}
+    p{color:var(--muted);font-size:14px;line-height:1.45;margin-bottom:18px}
+    a.btn{
+      display:inline-block;background:linear-gradient(135deg,#0875ff,#005bd9);color:#fff;
+      text-decoration:none;font-weight:800;padding:12px 18px;border-radius:12px;
+    }
+    code{background:#040b14;padding:2px 6px;border-radius:5px;color:#9bd2ff}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">RESTOR-PC</div>
+    <h1>{{ machine_label }}</h1>
+    <p>Bon de dépôt <code>MAC-{{ '%06d'|format(machine.id) }}</code>. Connectez-vous pour ouvrir la fiche machine atelier.</p>
+    <a class="btn" href="{{ login_url }}">Se connecter</a>
+  </div>
+</body>
+</html>

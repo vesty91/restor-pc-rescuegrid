@@ -584,13 +584,27 @@ async def on_startup() -> None:
     # sont exécutés dans un threadpool par Starlette, sans event loop courant).
     backup_module.start_backup_scheduler(BASE_DIR, STORAGE_DIR)
     reminders_scheduler.start_reminder_scheduler()
+    from . import appointment_reminders
+    appointment_reminders.start_appointment_reminder_scheduler()
 
 
 # ── Routes noyau ──────────────────────────────────────────────────────────────
 
+@app.get("/produit", response_class=HTMLResponse)
+@app.get("/pricing", response_class=HTMLResponse)
+def product_landing(request: Request):
+    """Page marketing publique (hors auth) — tarifs indicatifs + CTA connexion."""
+    return templates.TemplateResponse("landing.html", {"request": request})
+
+
 @app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+def login_page(request: Request, next: str = ""):
+    from .helpers import safe_next_path
+
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": None, "next": safe_next_path(next) or ""},
+    )
 
 
 @app.post("/login")
@@ -599,28 +613,36 @@ async def login_post(
     session: Session = Depends(get_session),
 ):
     from .auth import authenticate_user, create_access_token
+    from .helpers import safe_next_path
     from .rate_limit import clear_bucket, is_rate_limited, record_hit
 
     form = await request.form()
     username = str(form.get("username", "")).strip()
     password = str(form.get("password", ""))
+    next_path = safe_next_path(str(form.get("next", "")).strip())
     client_ip = get_client_ip(request)
     username_key = username.lower()
     ip_bucket = f"login_ip:{client_ip}"
     acct_bucket = f"login_user:{username_key}"
 
+    def _login_error(msg: str, status_code: int = 200):
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": msg, "next": next_path or ""},
+            status_code=status_code,
+        )
+
     if is_rate_limited(ip_bucket, max_count=LOGIN_RATE_LIMIT_COUNT, window_seconds=LOGIN_RATE_LIMIT_WINDOW_SECONDS):
         logger.warning("Rate limit login dépassé pour IP %s", client_ip)
-        return templates.TemplateResponse("login.html", {"request": request, "error": "Trop de tentatives. Réessayez dans 5 minutes."}, status_code=429)
+        return _login_error("Trop de tentatives. Réessayez dans 5 minutes.", 429)
 
     if username_key and is_rate_limited(
         acct_bucket, max_count=ACCOUNT_LOCKOUT_COUNT, window_seconds=ACCOUNT_LOCKOUT_WINDOW_SECONDS
     ):
         logger.warning("Compte verrouillé temporairement après échecs répétés : %s", username)
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Compte temporairement verrouillé suite à plusieurs échecs. Réessayez dans quelques minutes."},
-            status_code=429,
+        return _login_error(
+            "Compte temporairement verrouillé suite à plusieurs échecs. Réessayez dans quelques minutes.",
+            429,
         )
 
     user = authenticate_user(username, password, session)
@@ -629,7 +651,7 @@ async def login_post(
         if username_key:
             record_hit(acct_bucket, window_seconds=ACCOUNT_LOCKOUT_WINDOW_SECONDS)
         logger.warning("Échec connexion pour %s depuis %s", username, client_ip)
-        return templates.TemplateResponse("login.html", {"request": request, "error": "Identifiant ou mot de passe incorrect."})
+        return _login_error("Identifiant ou mot de passe incorrect.")
 
     clear_bucket(ip_bucket)
     clear_bucket(acct_bucket)
@@ -645,10 +667,12 @@ async def login_post(
         pending = create_2fa_pending_token(typ, user.username)
         response = RedirectResponse("/2fa/verify" if user.totp_enabled else "/2fa/setup", status_code=303)
         response.set_cookie("pending_2fa", pending, httponly=True, samesite="lax", secure=COOKIE_SECURE)
+        if next_path:
+            response.set_cookie("login_next", next_path, httponly=True, samesite="lax", secure=COOKIE_SECURE, max_age=600)
         return response
 
     token = create_access_token({"sub": user.username})
-    response = RedirectResponse("/", status_code=303)
+    response = RedirectResponse(next_path or "/", status_code=303)
     response.set_cookie("access_token", token, httponly=True, samesite="lax", secure=COOKIE_SECURE)
     return response
 
@@ -658,15 +682,22 @@ def logout():
     response = RedirectResponse("/login", status_code=303)
     response.delete_cookie("access_token")
     response.delete_cookie("pending_2fa")
+    response.delete_cookie("login_next")
     return response
 
 
-def _finalize_login(username: str) -> RedirectResponse:
+def _finalize_login(username: str, request: Request | None = None) -> RedirectResponse:
     from .auth import COOKIE_SECURE, create_access_token
+    from .helpers import safe_next_path
+
+    next_path = None
+    if request is not None:
+        next_path = safe_next_path(request.cookies.get("login_next"))
     token = create_access_token({"sub": username})
-    response = RedirectResponse("/", status_code=303)
+    response = RedirectResponse(next_path or "/", status_code=303)
     response.set_cookie("access_token", token, httponly=True, samesite="lax", secure=COOKIE_SECURE)
     response.delete_cookie("pending_2fa")
+    response.delete_cookie("login_next")
     return response
 
 
@@ -773,7 +804,7 @@ def two_fa_setup_continue(request: Request):
     payload = decode_2fa_pending_token(pending, "staff_2fa_setup")
     if not payload:
         return RedirectResponse("/login", status_code=303)
-    return _finalize_login(payload["sub"])
+    return _finalize_login(payload["sub"], request)
 
 
 @app.get("/2fa/verify", response_class=HTMLResponse)
@@ -825,7 +856,7 @@ async def two_fa_verify_confirm(request: Request, session: Session = Depends(get
     from .rate_limit import clear_bucket
     clear_bucket(f"2fa:{username_key}")
     logger.info("Connexion 2FA réussie : %s", username)
-    return _finalize_login(username)
+    return _finalize_login(username, request)
 
 
 @app.get("/", response_class=HTMLResponse)

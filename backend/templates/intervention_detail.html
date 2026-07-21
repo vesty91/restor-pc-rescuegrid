@@ -69,6 +69,9 @@
     {% if intervention.archive_path %}<a class="btn btn-secondary" href="/intervention/{{ intervention.id }}/download/zip">⬇ Archive ZIP</a>{% endif %}
     {% if intervention.report_path %}<a class="btn btn-secondary" href="/intervention/{{ intervention.id }}/download/manifest">◻ Manifest SHA256</a>{% endif %}
     <a class="btn btn-secondary" href="/intervention/{{ intervention.id }}/label" target="_blank">🏷 Étiquette</a>
+    {% if intervention.machine_id %}
+    <a class="btn btn-secondary" href="/machine/{{ intervention.machine_id }}/label" target="_blank">Bon de dépôt</a>
+    {% endif %}
   </div>
 </div>
 

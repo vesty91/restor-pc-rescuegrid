@@ -67,6 +67,9 @@ def _notify_client_appointment(session: Session, appointment: Appointment, *, ev
     elif event == "resend":
         subject = f"Rappel de rendez-vous — {appointment.title}"
         intro = "Voici un rappel de votre rendez-vous chez Restor-PC."
+    elif event == "reminder":
+        subject = f"Rappel J-1 — {appointment.title}"
+        intro = "Rappel : votre rendez-vous chez Restor-PC a lieu demain."
     else:
         subject = f"Mise à jour de rendez-vous — {appointment.title}"
         intro = f"Le statut de votre rendez-vous est passé à : {status_fr}."
@@ -101,6 +104,8 @@ def _appointment_sms_body(client: Client, appointment: Appointment, *, event: st
         return f"Restor-PC: RDV annule ({appointment.title}) prevu le {start_local}."
     if event == "resend":
         return f"Restor-PC: rappel RDV le {start_local} — {appointment.title}."
+    if event == "reminder":
+        return f"Restor-PC: rappel J-1 — RDV demain {start_local} — {appointment.title}."
     return f"Restor-PC: RDV mis a jour ({status_fr}) le {start_local} — {appointment.title}."
 
 
@@ -195,6 +200,7 @@ def create_appointment(
     notes: str = Form(""),
     notify_email: str = Form("on"),
     notify_sms: str = Form(""),
+    reminder_opt_in: str = Form("on"),
     session: Session = Depends(get_session),
 ):
     user, redirect = get_user_or_redirect(request, session)
@@ -218,6 +224,7 @@ def create_appointment(
         start_at=start_dt,
         end_at=end_dt,
         notes=notes.strip() or None,
+        reminder_opt_in=_truthy_form(reminder_opt_in),
     )
     session.add(appointment)
     session.commit()

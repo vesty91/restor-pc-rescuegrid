@@ -7,6 +7,9 @@
 <div class="page-header">
   <h1>{{ machine.machine_name or 'Machine #' ~ machine.id }}</h1>
   <p>{{ machine.manufacturer or '' }}{% if machine.model %} · {{ machine.model }}{% endif %}{% if machine.bios_serial %} · BIOS : {{ machine.bios_serial }}{% endif %} · Première intervention : {{ machine.created_at.strftime('%d/%m/%Y') }}{% if machine.last_intervention %} · Dernière : {{ machine.last_intervention.strftime('%d/%m/%Y') }}{% endif %}</p>
+  <p style="margin-top:10px">
+    <a class="btn btn-secondary" href="/machine/{{ machine.id }}/label" target="_blank">Imprimer bon de dépôt</a>
+  </p>
 </div>
 
 <div class="kpi-grid">

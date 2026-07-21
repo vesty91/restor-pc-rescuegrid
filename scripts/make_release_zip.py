@@ -65,7 +65,13 @@ def main() -> None:
             arcname = path.relative_to(ROOT).as_posix()
             zf.write(path, arcname)
             count += 1
+        # Garantir INSTALL.txt à la racine du ZIP (install 1 clic)
+        install_txt = ROOT / "INSTALL.txt"
+        if install_txt.is_file() and "INSTALL.txt" not in zf.namelist():
+            zf.write(install_txt, "INSTALL.txt")
+            count += 1
     print(f"OK : {OUT.name} ({count} fichiers)")
+    print("Installation : double-clic Install-RescueGrid.bat (voir INSTALL.txt)")
 
 
 if __name__ == "__main__":

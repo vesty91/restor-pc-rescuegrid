@@ -61,13 +61,14 @@
       {% endif %}
       <form method="post">
         {{ csrf_field(request)|safe }}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
         <label>Identifiant</label>
         <input name="username" required autofocus autocomplete="username">
         <label>Mot de passe</label>
         <input name="password" type="password" required autocomplete="current-password">
         <button>Se connecter</button>
       </form>
-      <div class="hint">Identifiant par défaut : <code>admin</code>. Mot de passe défini dans <code>.env</code> (ADMIN_PASSWORD) ou généré aléatoirement au premier démarrage — voir les logs serveur si oublié.<br>Changez le mot de passe dans les paramètres après connexion.</div>
+      <div class="hint">Identifiant par défaut : <code>admin</code>. Mot de passe défini dans <code>.env</code> (ADMIN_PASSWORD) ou généré aléatoirement au premier démarrage — voir les logs serveur si oublié.<br>Changez le mot de passe dans les paramètres après connexion.<br><br><a href="/produit" style="color:#00a3ff;text-decoration:none;font-weight:700">Découvrir RescueGrid →</a></div>
     </div>
   </div>
 </body>
