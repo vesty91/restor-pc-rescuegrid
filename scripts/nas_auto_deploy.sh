@@ -88,6 +88,14 @@ fi
     exit 1
   fi
 
+  # Après pull, relancer CE script pour utiliser la dernière logique (healthcheck,
+  # etc.). Sans ça, un bash déjà lancé garde l'ancienne version en mémoire.
+  if [ "${NAS_DEPLOY_REEXEC:-}" != "1" ]; then
+    echo "Rechargement du script de déploiement (post git pull)..."
+    export NAS_DEPLOY_REEXEC=1
+    exec bash "$REPO_DIR/scripts/nas_auto_deploy.sh"
+  fi
+
   SHORT_SHA="${REMOTE_COMMIT:0:12}"
   NEW_TAG="$IMAGE_REPO:$SHORT_SHA"
 
@@ -149,27 +157,43 @@ fi
     exit 1
   fi
 
-  # Sur NAS Synology, uvicorn peut mettre >8s (cold start + init DB/schedulers).
-  # On retry /health pendant ~90s au lieu d'un seul sleep court.
-  echo "Attente du démarrage puis vérification de santé (/health, max ~90s)..."
+  # Healthcheck robuste : d'abord via le réseau Docker (fiable), puis via le
+  # port hôte 8080. Retry ~2 min — uvicorn sur NAS Synology peut être lent.
+  _health_ok() {
+    "$DOCKER" compose -f "$COMPOSE_FILE" exec -T backend curl -sf -m 8 http://127.0.0.1:8000/health > /dev/null 2>&1 \
+      || curl -sf -m 8 http://127.0.0.1:8080/health > /dev/null 2>&1
+  }
+
+  echo "Attente du démarrage puis vérification de santé (/health, max ~120s)..."
   HEALTH_OK=0
-  for i in $(seq 1 18); do
+  for i in $(seq 1 24); do
     sleep 5
-    if curl -sf -m 10 http://127.0.0.1:8080/health > /dev/null; then
+    if _health_ok; then
       HEALTH_OK=1
       echo "Health OK après ~$((i * 5))s."
       break
     fi
-    echo "  tentative $i/18 : /health pas encore prêt..."
+    echo "  tentative $i/24 : /health pas encore prêt..."
   done
   if [ "$HEALTH_OK" -ne 1 ]; then
     echo "ECHEC : /health ne répond pas après bascule."
+    echo "--- docker compose ps ---"
+    "$DOCKER" compose -f "$COMPOSE_FILE" ps || true
+    echo "--- logs backend (80 dernières lignes) ---"
+    "$DOCKER" compose -f "$COMPOSE_FILE" logs --tail=80 backend || true
     if [ -n "$PREVIOUS_SHA" ] && "$DOCKER" image inspect "$IMAGE_REPO:${PREVIOUS_SHA:0:12}" > /dev/null 2>&1; then
       echo "Rollback automatique vers l'image précédente ($PREVIOUS_SHA)..."
       "$DOCKER" tag "$IMAGE_REPO:${PREVIOUS_SHA:0:12}" "$IMAGE_REPO:latest"
       "$DOCKER" compose -f "$COMPOSE_FILE" up -d backend
-      sleep 5
-      if curl -sf -m 15 http://127.0.0.1:8080/health > /dev/null; then
+      ROLLBACK_OK=0
+      for j in $(seq 1 18); do
+        sleep 5
+        if _health_ok; then
+          ROLLBACK_OK=1
+          break
+        fi
+      done
+      if [ "$ROLLBACK_OK" -eq 1 ]; then
         echo "Rollback réussi — backend de nouveau opérationnel avec l'ancienne image."
         "$REPO_DIR/scripts/notify_deploy.sh" "Deploiement de $REMOTE_COMMIT en echec (healthcheck) — rollback automatique reussi vers $PREVIOUS_SHA. Migration NON annulee, verification necessaire."
       else
