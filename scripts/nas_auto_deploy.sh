@@ -149,9 +149,20 @@ fi
     exit 1
   fi
 
-  echo "Attente du démarrage (8s) puis vérification de santé..."
-  sleep 8
-  if ! curl -sf -m 15 http://127.0.0.1:8080/health > /dev/null; then
+  # Sur NAS Synology, uvicorn peut mettre >8s (cold start + init DB/schedulers).
+  # On retry /health pendant ~90s au lieu d'un seul sleep court.
+  echo "Attente du démarrage puis vérification de santé (/health, max ~90s)..."
+  HEALTH_OK=0
+  for i in $(seq 1 18); do
+    sleep 5
+    if curl -sf -m 10 http://127.0.0.1:8080/health > /dev/null; then
+      HEALTH_OK=1
+      echo "Health OK après ~$((i * 5))s."
+      break
+    fi
+    echo "  tentative $i/18 : /health pas encore prêt..."
+  done
+  if [ "$HEALTH_OK" -ne 1 ]; then
     echo "ECHEC : /health ne répond pas après bascule."
     if [ -n "$PREVIOUS_SHA" ] && "$DOCKER" image inspect "$IMAGE_REPO:${PREVIOUS_SHA:0:12}" > /dev/null 2>&1; then
       echo "Rollback automatique vers l'image précédente ($PREVIOUS_SHA)..."
