@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Restor-PC RescueGrid — Atelier PC</title>
-  <meta name="description" content="RescueGrid : diagnostic PC, USB WinPE, devis, factures et suivi client pour ateliers et techniciens.">
+  <title>Restor-PC RescueGrid — Logiciel atelier PC</title>
+  <meta name="description" content="RescueGrid : diagnostic, USB WinPE, bons de dépôt QR, devis, factures, SMS RDV, portail client et Synology — la plateforme complète pour ateliers informatiques.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
@@ -28,14 +28,8 @@
       background: var(--bg0);
       overflow-x: hidden;
     }
-
-    /* Film grain + light sweep (pro overlay) */
-    .fx-grain,
-    .fx-sweep {
-      pointer-events: none;
-      position: fixed;
-      inset: 0;
-      z-index: 40;
+    .fx-grain, .fx-sweep {
+      pointer-events: none; position: fixed; inset: 0; z-index: 40;
     }
     .fx-grain {
       opacity: 0.045;
@@ -43,12 +37,7 @@
       mix-blend-mode: overlay;
     }
     .fx-sweep::before {
-      content: "";
-      position: absolute;
-      top: -20%;
-      left: -40%;
-      width: 45%;
-      height: 140%;
+      content: ""; position: absolute; top: -20%; left: -40%; width: 45%; height: 140%;
       background: linear-gradient(105deg, transparent, rgba(0, 163, 255, 0.07), transparent);
       animation: sweep 9s ease-in-out infinite;
     }
@@ -57,61 +46,38 @@
       40% { opacity: 1; }
       70% { transform: translateX(280%) rotate(8deg); opacity: 0; }
     }
-
     .nav {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      z-index: 30;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      position: fixed; top: 0; left: 0; right: 0; z-index: 30;
+      display: flex; align-items: center; justify-content: space-between;
       padding: 0.85rem 5vw;
       background: linear-gradient(180deg, rgba(2, 8, 18, 0.85), transparent);
       backdrop-filter: blur(6px);
     }
     .nav-brand {
-      display: flex;
-      align-items: center;
-      gap: 0.65rem;
-      text-decoration: none;
-      color: var(--text);
-      font-family: var(--font-display);
-      font-weight: 800;
-      letter-spacing: -0.03em;
+      display: flex; align-items: center; gap: 0.65rem;
+      text-decoration: none; color: var(--text);
+      font-family: var(--font-display); font-weight: 800; letter-spacing: -0.03em;
     }
     .nav-brand img { height: 28px; width: auto; }
+    .nav-links { display: flex; gap: 1.25rem; align-items: center; }
     .nav a.nav-link {
-      color: var(--muted);
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 0.95rem;
+      color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.92rem;
       transition: color 0.2s;
     }
     .nav a.nav-link:hover { color: var(--text); }
+    .nav a.nav-cta {
+      background: linear-gradient(135deg, #0875ff, #005bd9); color: #fff !important;
+      padding: 0.45rem 0.9rem; border-radius: 10px; font-size: 0.88rem;
+    }
 
-    /* —— HERO full-bleed —— */
     .hero {
-      position: relative;
-      min-height: 100vh;
-      min-height: 100dvh;
-      display: flex;
-      align-items: flex-end;
-      padding: 0;
-      isolation: isolate;
+      position: relative; min-height: 100vh; min-height: 100dvh;
+      display: flex; align-items: flex-end; padding: 0; isolation: isolate;
     }
-    .hero-media {
-      position: absolute;
-      inset: 0;
-      z-index: -2;
-      overflow: hidden;
-    }
+    .hero-media { position: absolute; inset: 0; z-index: -2; overflow: hidden; }
     .hero-media img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: 60% center;
-      transform: scale(1.08);
-      animation: kenburns 22s ease-in-out infinite alternate;
+      width: 100%; height: 100%; object-fit: cover; object-position: 60% center;
+      transform: scale(1.08); animation: kenburns 22s ease-in-out infinite alternate;
       filter: saturate(1.05) contrast(1.05);
     }
     @keyframes kenburns {
@@ -119,92 +85,53 @@
       to { transform: scale(1.18) translate(-2%, -1%); }
     }
     .hero-scrim {
-      position: absolute;
-      inset: 0;
-      z-index: -1;
+      position: absolute; inset: 0; z-index: -1;
       background:
         linear-gradient(90deg, rgba(2, 8, 18, 0.92) 0%, rgba(2, 8, 18, 0.55) 48%, rgba(2, 8, 18, 0.25) 100%),
         linear-gradient(0deg, rgba(2, 8, 18, 0.95) 0%, transparent 42%);
     }
-    .hero-inner {
-      width: min(640px, 92vw);
-      padding: 7.5rem 5vw 4.5rem;
-    }
+    .hero-inner { width: min(640px, 92vw); padding: 7.5rem 5vw 4.5rem; }
     .brand {
-      font-family: var(--font-display);
-      font-weight: 800;
-      font-size: clamp(2.8rem, 8vw, 5rem);
-      letter-spacing: -0.045em;
-      line-height: 0.92;
+      font-family: var(--font-display); font-weight: 800;
+      font-size: clamp(2.8rem, 8vw, 5rem); letter-spacing: -0.045em; line-height: 0.92;
       background: linear-gradient(120deg, #fff 15%, var(--blue2) 85%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      margin-bottom: 1.1rem;
-      animation: rise 0.85s cubic-bezier(.22,1,.36,1) both;
-      text-shadow: 0 0 60px rgba(0, 163, 255, 0.25);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      margin-bottom: 1.1rem; animation: rise 0.85s cubic-bezier(.22,1,.36,1) both;
     }
     .headline {
-      font-family: var(--font-display);
-      font-weight: 700;
-      font-size: clamp(1.3rem, 3.4vw, 1.95rem);
-      letter-spacing: -0.02em;
-      max-width: 18ch;
-      margin-bottom: 0.85rem;
+      font-family: var(--font-display); font-weight: 700;
+      font-size: clamp(1.3rem, 3.4vw, 1.95rem); letter-spacing: -0.02em;
+      max-width: 20ch; margin-bottom: 0.85rem;
       animation: rise 0.85s cubic-bezier(.22,1,.36,1) 0.1s both;
     }
     .lead {
-      color: var(--muted);
-      font-size: 1.12rem;
-      max-width: 38ch;
-      line-height: 1.5;
-      margin-bottom: 1.75rem;
-      animation: rise 0.85s cubic-bezier(.22,1,.36,1) 0.18s both;
+      color: var(--muted); font-size: 1.12rem; max-width: 40ch; line-height: 1.5;
+      margin-bottom: 1.75rem; animation: rise 0.85s cubic-bezier(.22,1,.36,1) 0.18s both;
     }
     .ctas {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
+      display: flex; flex-wrap: wrap; gap: 0.75rem;
       animation: rise 0.85s cubic-bezier(.22,1,.36,1) 0.28s both;
     }
     .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.4rem;
-      padding: 0.9rem 1.4rem;
-      border-radius: 12px;
-      font-family: var(--font-display);
-      font-weight: 700;
-      font-size: 0.95rem;
-      text-decoration: none;
-      border: 1px solid transparent;
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+      padding: 0.9rem 1.4rem; border-radius: 12px;
+      font-family: var(--font-display); font-weight: 700; font-size: 0.95rem;
+      text-decoration: none; border: 1px solid transparent;
       transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
     }
     .btn:hover { transform: translateY(-2px); }
     .btn-primary {
-      background: linear-gradient(135deg, #0875ff, #005bd9);
-      color: #fff;
+      background: linear-gradient(135deg, #0875ff, #005bd9); color: #fff;
       box-shadow: 0 12px 36px rgba(10, 132, 255, 0.35);
     }
-    .btn-primary:hover { box-shadow: 0 16px 40px rgba(10, 132, 255, 0.45); }
     .btn-ghost {
-      background: rgba(8, 20, 38, 0.55);
-      border-color: var(--line);
-      color: var(--text);
+      background: rgba(8, 20, 38, 0.55); border-color: var(--line); color: var(--text);
       backdrop-filter: blur(8px);
     }
     .scroll-hint {
-      position: absolute;
-      bottom: 1.4rem;
-      left: 50%;
-      transform: translateX(-50%);
-      color: var(--muted);
-      font-size: 0.75rem;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      opacity: 0.7;
-      animation: bob 2.4s ease-in-out infinite;
+      position: absolute; bottom: 1.4rem; left: 50%; transform: translateX(-50%);
+      color: var(--muted); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase;
+      opacity: 0.7; animation: bob 2.4s ease-in-out infinite;
     }
     @keyframes bob {
       0%, 100% { transform: translate(-50%, 0); }
@@ -215,151 +142,130 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* —— Sections —— */
-    section.block {
-      padding: 5.5rem 5vw;
-      position: relative;
-    }
-    .block-head {
-      max-width: 36rem;
-      margin-bottom: 2rem;
+    section.block { padding: 5rem 5vw; position: relative; }
+    .block-head { max-width: 40rem; margin-bottom: 2.2rem; }
+    .block-head .eyebrow {
+      font-family: var(--font-display); font-size: 0.78rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase; color: var(--blue2); margin-bottom: 0.55rem;
     }
     .block-head h2 {
-      font-family: var(--font-display);
-      font-size: clamp(1.6rem, 3.5vw, 2.2rem);
-      letter-spacing: -0.03em;
-      margin-bottom: 0.55rem;
+      font-family: var(--font-display); font-size: clamp(1.55rem, 3.5vw, 2.25rem);
+      letter-spacing: -0.03em; margin-bottom: 0.55rem;
     }
-    .block-head p {
-      color: var(--muted);
-      font-size: 1.05rem;
-      line-height: 1.5;
-    }
+    .block-head p { color: var(--muted); font-size: 1.05rem; line-height: 1.55; }
     .reveal {
-      opacity: 0;
-      transform: translateY(28px);
+      opacity: 0; transform: translateY(28px);
       transition: opacity 0.7s cubic-bezier(.22,1,.36,1), transform 0.7s cubic-bezier(.22,1,.36,1);
     }
-    .reveal.in {
-      opacity: 1;
-      transform: none;
-    }
+    .reveal.in { opacity: 1; transform: none; }
 
-    /* Demo reel (video-like) */
     .demo {
-      background:
-        radial-gradient(ellipse 70% 50% at 50% 0%, rgba(10, 132, 255, 0.12), transparent 60%),
-        var(--bg0);
+      background: radial-gradient(ellipse 70% 50% at 50% 0%, rgba(10, 132, 255, 0.12), transparent 60%), var(--bg0);
     }
     .reel {
-      position: relative;
-      max-width: 1080px;
-      margin: 0 auto;
-      border-radius: 4px;
-      overflow: hidden;
-      aspect-ratio: 16 / 9;
-      background: #000;
-      box-shadow:
-        0 0 0 1px rgba(0, 163, 255, 0.2),
-        0 40px 80px rgba(0, 0, 0, 0.55);
+      position: relative; max-width: 1080px; margin: 0 auto; border-radius: 4px;
+      overflow: hidden; aspect-ratio: 16 / 9; background: #000;
+      box-shadow: 0 0 0 1px rgba(0, 163, 255, 0.2), 0 40px 80px rgba(0, 0, 0, 0.55);
     }
-    .reel-frame {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      transition: opacity 1s ease;
-    }
+    .reel-frame { position: absolute; inset: 0; opacity: 0; transition: opacity 1s ease; }
     .reel-frame.is-active { opacity: 1; }
-    .reel-frame img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
+    .reel-frame img { width: 100%; height: 100%; object-fit: cover; }
     .reel-ui {
-      position: absolute;
-      inset: auto 0 0 0;
-      padding: 1rem 1.1rem 0.9rem;
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      background: linear-gradient(0deg, rgba(0,0,0,0.75), transparent);
-      z-index: 2;
+      position: absolute; inset: auto 0 0 0; padding: 1rem 1.1rem 0.9rem;
+      display: flex; align-items: center; gap: 0.75rem;
+      background: linear-gradient(0deg, rgba(0,0,0,0.75), transparent); z-index: 2;
     }
     .reel-play {
-      width: 40px; height: 40px;
-      border: 0;
-      border-radius: 50%;
-      background: rgba(10, 132, 255, 0.95);
-      color: #fff;
-      cursor: pointer;
-      font-size: 0.85rem;
-      display: grid;
-      place-items: center;
-      flex-shrink: 0;
+      width: 40px; height: 40px; border: 0; border-radius: 50%;
+      background: rgba(10, 132, 255, 0.95); color: #fff; cursor: pointer;
+      font-size: 0.85rem; display: grid; place-items: center; flex-shrink: 0;
     }
-    .reel-bar {
-      flex: 1;
-      height: 3px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 2px;
-      overflow: hidden;
-    }
+    .reel-bar { flex: 1; height: 3px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden; }
     .reel-bar > span {
-      display: block;
-      height: 100%;
-      width: 0%;
+      display: block; height: 100%; width: 0%;
       background: linear-gradient(90deg, var(--blue), var(--blue2));
-      transition: width 0.05s linear;
     }
     .reel-label {
-      font-size: 0.78rem;
-      color: #cfe6ff;
-      white-space: nowrap;
-      font-family: var(--font-display);
-      font-weight: 600;
+      font-size: 0.78rem; color: #cfe6ff; white-space: nowrap;
+      font-family: var(--font-display); font-weight: 600;
     }
 
-    /* Feature photo rows */
+    /* Parcours */
+    .steps {
+      display: grid; gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      max-width: 1100px; margin: 0 auto;
+      counter-reset: step;
+    }
+    .step {
+      padding: 1.25rem 1.15rem; border: 1px solid var(--line); border-radius: 12px;
+      background: rgba(13, 27, 47, 0.4); position: relative;
+    }
+    .step::before {
+      counter-increment: step; content: counter(step, decimal-leading-zero);
+      font-family: var(--font-display); font-weight: 800; font-size: 1.4rem;
+      color: var(--blue2); display: block; margin-bottom: 0.5rem; letter-spacing: -0.03em;
+    }
+    .step h3 {
+      font-family: var(--font-display); font-size: 1.05rem; margin-bottom: 0.35rem;
+    }
+    .step p { color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+
+    /* Modules détail */
+    .modules {
+      display: grid; gap: 1.1rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      max-width: 1100px; margin: 0 auto;
+    }
+    .mod {
+      padding: 1.4rem 1.3rem; border: 1px solid var(--line); border-radius: 14px;
+      background: rgba(8, 20, 38, 0.55); transition: border-color 0.25s, transform 0.25s;
+    }
+    .mod:hover { border-color: rgba(0, 163, 255, 0.4); transform: translateY(-2px); }
+    .mod h3 {
+      font-family: var(--font-display); font-size: 1.15rem; margin-bottom: 0.45rem;
+      letter-spacing: -0.02em;
+    }
+    .mod > p { color: var(--muted); font-size: 0.95rem; line-height: 1.45; margin-bottom: 0.85rem; }
+    .mod ul { list-style: none; display: grid; gap: 0.4rem; }
+    .mod li {
+      color: #c5d8ef; font-size: 0.9rem; line-height: 1.4;
+      padding-left: 1.1rem; position: relative;
+    }
+    .mod li::before {
+      content: ""; position: absolute; left: 0; top: 0.55em;
+      width: 6px; height: 6px; border-radius: 50%; background: var(--blue2);
+    }
+
     .feature {
-      display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
-      gap: 2.5rem;
-      align-items: center;
-      max-width: 1100px;
-      margin: 0 auto;
+      display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 2.5rem;
+      align-items: center; max-width: 1100px; margin: 0 auto;
     }
     .feature.reverse { direction: rtl; }
     .feature.reverse > * { direction: ltr; }
     .feature-copy h3 {
-      font-family: var(--font-display);
-      font-size: clamp(1.4rem, 3vw, 1.85rem);
-      letter-spacing: -0.03em;
-      margin-bottom: 0.6rem;
+      font-family: var(--font-display); font-size: clamp(1.4rem, 3vw, 1.85rem);
+      letter-spacing: -0.03em; margin-bottom: 0.6rem;
     }
-    .feature-copy p {
-      color: var(--muted);
-      font-size: 1.05rem;
-      line-height: 1.55;
-      max-width: 38ch;
+    .feature-copy p { color: var(--muted); font-size: 1.05rem; line-height: 1.55; max-width: 40ch; margin-bottom: 0.9rem; }
+    .feature-copy ul { list-style: none; display: grid; gap: 0.45rem; }
+    .feature-copy li {
+      color: #c5d8ef; font-size: 0.95rem; padding-left: 1.15rem; position: relative;
+    }
+    .feature-copy li::before {
+      content: ""; position: absolute; left: 0; top: 0.55em;
+      width: 6px; height: 6px; border-radius: 50%; background: var(--blue2);
     }
     .feature-photo {
-      position: relative;
-      border-radius: 2px;
-      overflow: hidden;
-      aspect-ratio: 4 / 3;
+      position: relative; border-radius: 2px; overflow: hidden; aspect-ratio: 4 / 3;
       box-shadow: 0 30px 60px rgba(0,0,0,0.4);
     }
     .feature-photo::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      box-shadow: inset 0 0 0 1px rgba(0, 163, 255, 0.18);
-      pointer-events: none;
+      content: ""; position: absolute; inset: 0;
+      box-shadow: inset 0 0 0 1px rgba(0, 163, 255, 0.18); pointer-events: none;
     }
     .feature-photo img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+      width: 100%; height: 100%; object-fit: cover;
       transition: transform 1.2s cubic-bezier(.22,1,.36,1);
     }
     .feature:hover .feature-photo img { transform: scale(1.04); }
@@ -371,67 +277,95 @@
       border-top: 1px solid var(--line);
     }
     .plans {
-      display: grid;
-      gap: 1.1rem;
+      display: grid; gap: 1rem;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      max-width: 640px;
+      max-width: 1120px; margin: 0 auto;
     }
     .plan {
-      padding: 1.35rem 1.3rem;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: rgba(13, 27, 47, 0.55);
-      backdrop-filter: blur(10px);
+      padding: 1.45rem 1.3rem 1.5rem; border: 1px solid var(--line); border-radius: 14px;
+      background: rgba(13, 27, 47, 0.55); backdrop-filter: blur(10px);
+      display: flex; flex-direction: column; gap: 0.35rem;
       transition: border-color 0.25s, transform 0.25s;
     }
-    .plan:hover {
-      border-color: rgba(0, 163, 255, 0.45);
-      transform: translateY(-3px);
+    .plan:hover { border-color: rgba(0, 163, 255, 0.45); transform: translateY(-3px); }
+    .plan.featured {
+      border-color: rgba(0, 163, 255, 0.55);
+      box-shadow: 0 0 0 1px rgba(0, 163, 255, 0.2), 0 20px 50px rgba(10, 132, 255, 0.12);
+      background: linear-gradient(180deg, rgba(10, 50, 100, 0.45), rgba(13, 27, 47, 0.7));
+    }
+    .plan .badge {
+      align-self: flex-start; font-size: 0.72rem; font-weight: 800;
+      font-family: var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+      color: #041018; background: var(--blue2); padding: 0.2rem 0.55rem; border-radius: 6px;
+      margin-bottom: 0.35rem;
     }
     .plan strong {
-      display: block;
-      font-family: var(--font-display);
-      font-size: 1.2rem;
-      margin-bottom: 0.3rem;
+      display: block; font-family: var(--font-display); font-size: 1.25rem;
     }
     .plan .price {
-      font-family: var(--font-display);
-      font-weight: 800;
-      font-size: 1.85rem;
-      color: var(--blue2);
+      font-family: var(--font-display); font-weight: 800; font-size: 1.85rem; color: var(--blue2);
     }
-    .plan p { color: var(--muted); font-size: 0.92rem; margin-top: 0.5rem; line-height: 1.4; }
+    .plan .price span { font-size: 0.9rem; font-weight: 600; color: var(--muted); }
+    .plan .tagline { color: var(--muted); font-size: 0.92rem; line-height: 1.4; margin: 0.35rem 0 0.7rem; }
+    .plan ul { list-style: none; display: grid; gap: 0.4rem; margin-top: auto; padding-top: 0.5rem; }
+    .plan li {
+      color: #c5d8ef; font-size: 0.88rem; line-height: 1.35;
+      padding-left: 1.05rem; position: relative;
+    }
+    .plan li::before {
+      content: ""; position: absolute; left: 0; top: 0.5em;
+      width: 5px; height: 5px; border-radius: 50%; background: var(--blue2);
+    }
+    .plan .plan-cta {
+      margin-top: 1.1rem; text-align: center; font-size: 0.9rem;
+    }
+
+    .compare-wrap { max-width: 1100px; margin: 2.5rem auto 0; overflow-x: auto; }
+    .compare {
+      width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 640px;
+    }
+    .compare th, .compare td {
+      padding: 0.7rem 0.85rem; border-bottom: 1px solid var(--line); text-align: left;
+    }
+    .compare th {
+      font-family: var(--font-display); font-weight: 700; color: var(--muted);
+      font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .compare td:first-child { color: #c5d8ef; }
+    .compare .yes { color: var(--blue2); font-weight: 700; }
+    .compare .no { color: #5a6f88; }
+
+    .faq {
+      max-width: 760px; margin: 0 auto; display: grid; gap: 0.75rem;
+    }
+    .faq details {
+      border: 1px solid var(--line); border-radius: 12px;
+      background: rgba(13, 27, 47, 0.45); padding: 0.95rem 1.15rem;
+    }
+    .faq summary {
+      font-family: var(--font-display); font-weight: 700; cursor: pointer;
+      list-style: none;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq details[open] summary { color: var(--blue2); margin-bottom: 0.5rem; }
+    .faq p { color: var(--muted); font-size: 0.95rem; line-height: 1.5; }
 
     .closing {
-      text-align: center;
-      padding: 4.5rem 5vw 5rem;
-      border-top: 1px solid var(--line);
+      text-align: center; padding: 4.5rem 5vw 5rem; border-top: 1px solid var(--line);
     }
     .closing h2 {
-      font-family: var(--font-display);
-      font-size: clamp(1.5rem, 3vw, 2rem);
-      margin-bottom: 0.6rem;
+      font-family: var(--font-display); font-size: clamp(1.5rem, 3vw, 2rem); margin-bottom: 0.6rem;
     }
-    .closing p { color: var(--muted); margin-bottom: 1.4rem; }
-    .install-hint {
-      margin-top: 1.5rem;
-      color: var(--muted);
-      font-size: 0.88rem;
-    }
+    .closing p { color: var(--muted); margin-bottom: 1.4rem; max-width: 42ch; margin-left: auto; margin-right: auto; }
+    .install-hint { margin-top: 1.5rem; color: var(--muted); font-size: 0.88rem; }
     .install-hint code {
-      background: #040b14;
-      padding: 0.15rem 0.45rem;
-      border-radius: 5px;
-      color: #9bd2ff;
-      font-size: 0.85em;
+      background: #040b14; padding: 0.15rem 0.45rem; border-radius: 5px; color: #9bd2ff; font-size: 0.85em;
     }
 
     @media (max-width: 820px) {
-      .feature, .feature.reverse {
-        grid-template-columns: 1fr;
-        direction: ltr;
-      }
+      .feature, .feature.reverse { grid-template-columns: 1fr; direction: ltr; }
       .hero-inner { padding-bottom: 5.5rem; }
+      .nav-links .hide-sm { display: none; }
     }
     @media (prefers-reduced-motion: reduce) {
       .hero-media img, .fx-sweep::before, .scroll-hint { animation: none; }
@@ -448,7 +382,12 @@
       <img src="/static/landing/logo.png" alt="" width="120" height="28">
       <span>RESTOR-PC</span>
     </a>
-    <a class="nav-link" href="/login">Connexion</a>
+    <div class="nav-links">
+      <a class="nav-link hide-sm" href="#fonctions">Fonctions</a>
+      <a class="nav-link hide-sm" href="#demo">Démo</a>
+      <a class="nav-link" href="#tarifs">Tarifs</a>
+      <a class="nav-link nav-cta" href="/login">Connexion</a>
+    </div>
   </nav>
 
   <header class="hero">
@@ -459,24 +398,55 @@
     <div class="hero-inner">
       <p class="brand">RescueGrid</p>
       <h1 class="headline">L’atelier PC, du dépôt au paiement.</h1>
-      <p class="lead">Diagnostic, USB WinPE, devis, factures et suivi client — une plateforme pour techniciens indépendants et ateliers.</p>
+      <p class="lead">Diagnostic, USB WinPE, devis, factures, SMS RDV et portail client — une plateforme pensée pour techniciens indépendants et ateliers.</p>
       <div class="ctas">
-        <a class="btn btn-primary" href="/login">Démarrer</a>
-        <a class="btn btn-ghost" href="#demo">Voir la démo</a>
+        <a class="btn btn-primary" href="/login">Essayer le dashboard</a>
+        <a class="btn btn-ghost" href="#tarifs">Voir les formules</a>
       </div>
     </div>
     <div class="scroll-hint" aria-hidden="true">Scroll</div>
   </header>
 
+  <section class="block" id="parcours">
+    <div class="block-head reveal">
+      <p class="eyebrow">Parcours atelier</p>
+      <h2>De la machine déposée à la facture payée</h2>
+      <p>RescueGrid suit chaque intervention sans tableur, sans papier perdu, sans oublier le client.</p>
+    </div>
+    <div class="steps reveal">
+      <div class="step">
+        <h3>Dépôt</h3>
+        <p>Fiche machine + bon de dépôt QR. Le client scanne, vous ouvrez le dossier en un geste.</p>
+      </div>
+      <div class="step">
+        <h3>Diagnostic</h3>
+        <p>Agent Windows / WinPE : inventaire, SMART, scores, rapport HTML importé en ZIP.</p>
+      </div>
+      <div class="step">
+        <h3>Devis</h3>
+        <p>Devis premium PDF, envoi SMTP, signature, acceptation depuis l’espace client.</p>
+      </div>
+      <div class="step">
+        <h3>Réparation</h3>
+        <p>Statuts atelier, pièces, temps passé, photos avant/après, tickets internes.</p>
+      </div>
+      <div class="step">
+        <h3>Paiement</h3>
+        <p>Facture, lien Stripe optionnel, relances auto, export comptable auto-entrepreneur.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="block demo" id="demo">
     <div class="block-head reveal">
+      <p class="eyebrow">Aperçu</p>
       <h2>Vu de l’atelier</h2>
-      <p>Dashboard, bons de dépôt QR et clé WinPE — le parcours technicien en images.</p>
+      <p>Dashboard, bons QR et clé WinPE — le quotidien technicien en images.</p>
     </div>
     <div class="reel reveal" id="reel" role="region" aria-label="Démo visuelle RescueGrid">
       <div class="reel-frame is-active"><img src="/static/landing/hero-atelier.jpg" alt="Atelier Restor-PC avec dashboard RescueGrid"></div>
-      <div class="reel-frame"><img src="/static/landing/depot-qr.jpg" alt="Bon de dépôt avec QR code sur machine"></div>
-      <div class="reel-frame"><img src="/static/landing/usb-winpe.jpg" alt="Clé USB WinPE de secours"></div>
+      <div class="reel-frame"><img src="/static/landing/depot-qr.jpg" alt="Bon de dépôt avec QR code"></div>
+      <div class="reel-frame"><img src="/static/landing/usb-winpe.jpg" alt="Clé USB WinPE"></div>
       <div class="reel-ui">
         <button type="button" class="reel-play" id="reelPlay" aria-label="Pause">❚❚</button>
         <div class="reel-bar" aria-hidden="true"><span id="reelProgress"></span></div>
@@ -485,14 +455,128 @@
     </div>
   </section>
 
+  <section class="block" id="fonctions">
+    <div class="block-head reveal">
+      <p class="eyebrow">Fonctionnalités</p>
+      <h2>Tout ce que RescueGrid couvre — en détail</h2>
+      <p>Pas un simple CRM : un outil métier du banc de test jusqu’au NAS Synology.</p>
+    </div>
+    <div class="modules reveal">
+      <article class="mod">
+        <h3>Dashboard atelier</h3>
+        <p>Vue d’ensemble pour piloter la journée.</p>
+        <ul>
+          <li>Clients, machines, interventions</li>
+          <li>Recherche globale et KPI (scores, disques critiques)</li>
+          <li>Statuts atelier clairs (reçu → livré)</li>
+          <li>Journal d’activité technicien / admin</li>
+          <li>Rôles admin / technicien + 2FA admin</li>
+        </ul>
+      </article>
+      <article class="mod">
+        <h3>Agent Windows &amp; USB</h3>
+        <p>Collecte terrain et import automatique.</p>
+        <ul>
+          <li>Diagnostic inventaire (CPU, RAM, disques, OS)</li>
+          <li>Analyse SMART / santé disque</li>
+          <li>Sauvegarde profils (Bureau, Documents…)</li>
+          <li>ZIP intervention → import dashboard</li>
+          <li>GUI progression, historique, signature</li>
+        </ul>
+      </article>
+      <article class="mod">
+        <h3>WinPE type Strelec</h3>
+        <p>Quand le PC ne démarre plus.</p>
+        <ul>
+          <li>Bureau WinXShell + réseau</li>
+          <li>RescueGrid lancé depuis le bureau</li>
+          <li>Explorer fichiers, outils atelier</li>
+          <li>Unlocker / reset mot de passe (pack)</li>
+          <li>Build clé USB 1 clic (ADK)</li>
+        </ul>
+      </article>
+      <article class="mod">
+        <h3>Bons de dépôt QR</h3>
+        <p>Traçabilité physique des machines.</p>
+        <ul>
+          <li>Étiquette imprimable MAC-xxxxxx</li>
+          <li>QR → fiche machine atelier</li>
+          <li>Aussi sur étiquette intervention</li>
+          <li>Scan téléphone → login puis dossier</li>
+          <li>Fini les post-it illisibles</li>
+        </ul>
+      </article>
+      <article class="mod">
+        <h3>Devis &amp; factures</h3>
+        <p>Documents premium Restor-PC.</p>
+        <ul>
+          <li>PDF / HTML soignés, logo &amp; signature</li>
+          <li>Envoi SMTP (ex. Infomaniak)</li>
+          <li>TVA 293 B auto-entrepreneur</li>
+          <li>Lien paiement Stripe (optionnel)</li>
+          <li>Relances auto devis / factures</li>
+        </ul>
+      </article>
+      <article class="mod">
+        <h3>Planning &amp; SMS RDV</h3>
+        <p>Moins d’absents, plus de créneaux tenus.</p>
+        <ul>
+          <li>Agenda atelier (semaine / à venir)</li>
+          <li>Confirmation email à la création</li>
+          <li>SMS / WhatsApp via Twilio</li>
+          <li>Rappel automatique J-1 (option)</li>
+          <li>Statuts : confirmé, absent, annulé…</li>
+        </ul>
+      </article>
+      <article class="mod">
+        <h3>Espace client</h3>
+        <p>Transparence sans appels inutiles.</p>
+        <ul>
+          <li>Portail sécurisé (mot de passe / OAuth)</li>
+          <li>Suivi interventions &amp; documents</li>
+          <li>Acceptation devis → facture</li>
+          <li>Activation depuis la fiche CRM</li>
+          <li>Emails RDV / devis / factures</li>
+        </ul>
+      </article>
+      <article class="mod">
+        <h3>Stock, tickets, compta</h3>
+        <p>L’atelier reste organisé.</p>
+        <ul>
+          <li>Stock pièces &amp; consommation</li>
+          <li>Tickets internes liés aux dossiers</li>
+          <li>Temps passé / tarif horaire</li>
+          <li>Export comptable XLSX</li>
+          <li>Sauvegardes planifiées + alertes</li>
+        </ul>
+      </article>
+      <article class="mod">
+        <h3>Synology &amp; multi-poste</h3>
+        <p>Prod sérieuse, pas un script orphelin.</p>
+        <ul>
+          <li>Docker Compose NAS (Postgres, Nginx)</li>
+          <li>HTTPS reverse proxy prêt</li>
+          <li>Déploiement continu git → image</li>
+          <li>Monitoring Uptime Kuma</li>
+          <li>MinIO / stockage optionnel</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
   <section class="block" id="depot">
     <div class="feature reveal">
       <div class="feature-photo">
-        <img src="/static/landing/depot-qr.jpg" alt="Étiquette de dépôt scannée au téléphone" loading="lazy" width="1200" height="800">
+        <img src="/static/landing/depot-qr.jpg" alt="Étiquette de dépôt QR" loading="lazy" width="1200" height="800">
       </div>
       <div class="feature-copy">
         <h3>Bon de dépôt QR</h3>
-        <p>Imprimez l’étiquette machine, le client scanne, vous ouvrez la fiche atelier en un geste — fini les étiquettes perdues.</p>
+        <p>Chaque machine reçoit une étiquette. Le QR ouvre la fiche atelier : client, BIOS, historique d’interventions.</p>
+        <ul>
+          <li>Impression 105 mm prête atelier</li>
+          <li>Lien court /d/{id} scannable</li>
+          <li>Compatible étiquette intervention</li>
+        </ul>
       </div>
     </div>
   </section>
@@ -500,92 +584,190 @@
   <section class="block" id="usb" style="padding-top:0">
     <div class="feature reverse reveal">
       <div class="feature-photo">
-        <img src="/static/landing/usb-winpe.jpg" alt="Clé USB bootable WinPE" loading="lazy" width="1200" height="800">
+        <img src="/static/landing/usb-winpe.jpg" alt="Clé USB WinPE" loading="lazy" width="1200" height="800">
       </div>
       <div class="feature-copy">
         <h3>Pack USB WinPE</h3>
-        <p>Boot de secours type Strelec maison : bureau, réseau, RescueGrid et Unlocker prêts pour les PC qui ne démarrent plus.</p>
+        <p>Boot de secours maison : bureau, réseau, RescueGrid et Unlocker. Idéal PC qui ne démarrent plus.</p>
+        <ul>
+          <li>Script Build-ReadyUSB (ADK)</li>
+          <li>Injection WinXShell automatique</li>
+          <li>Outils + Lockpick si présents</li>
+        </ul>
       </div>
     </div>
   </section>
 
   <section class="block pricing" id="tarifs">
     <div class="block-head reveal">
-      <h2>Tarifs indicatifs</h2>
-      <p>Choisissez la formule adaptée à votre atelier.</p>
+      <p class="eyebrow">Tarifs</p>
+      <h2>Des formules claires pour chaque atelier</h2>
+      <p>Prix indicatifs Restor-PC — licence logicielle. Matériel USB / support à la carte selon la formule.</p>
     </div>
     <div class="plans reveal">
       <div class="plan">
-        <strong>Starter</strong>
-        <div class="price">399 €</div>
-        <p>Licence à vie — 1 atelier, mises à jour majeures incluses la 1re année.</p>
+        <strong>Essentiel</strong>
+        <div class="price">19 €<span> / mois</span></div>
+        <p class="tagline">Solo qui démarre — dashboard + agent, sans SMS ni pack USB.</p>
+        <ul>
+          <li>1 atelier / 1 technicien</li>
+          <li>Clients, machines, interventions</li>
+          <li>Devis &amp; factures PDF + SMTP</li>
+          <li>Import ZIP agent Windows</li>
+          <li>Bons de dépôt QR</li>
+          <li>Sauvegardes locales</li>
+          <li>Mises à jour mineures</li>
+        </ul>
+        <a class="btn btn-ghost plan-cta" href="/login">Choisir Essentiel</a>
       </div>
       <div class="plan">
-        <strong>Pro</strong>
-        <div class="price">29 €<span style="font-size:0.95rem;font-weight:600;color:var(--muted)"> / mois</span></div>
-        <p>Abonnement — support prioritaire, SMS RDV, pack USB WinPE.</p>
+        <strong>Starter</strong>
+        <div class="price">399 €</div>
+        <p class="tagline">Licence à vie — idéal indépendant qui veut payer une fois.</p>
+        <ul>
+          <li>Tout Essentiel, à vie</li>
+          <li>1 atelier, jusqu’à 2 techniciens</li>
+          <li>Planning RDV + emails</li>
+          <li>Espace client</li>
+          <li>Export comptable</li>
+          <li>MàJ majeures 12 mois incluses</li>
+          <li>Support email standard</li>
+        </ul>
+        <a class="btn btn-ghost plan-cta" href="/login">Choisir Starter</a>
       </div>
+      <div class="plan featured">
+        <span class="badge">Le plus choisi</span>
+        <strong>Pro</strong>
+        <div class="price">29 €<span> / mois</span></div>
+        <p class="tagline">Atelier qui tourne — SMS, WinPE, Synology, support prioritaire.</p>
+        <ul>
+          <li>Tout Starter</li>
+          <li>SMS / WhatsApp RDV (Twilio)</li>
+          <li>Rappels auto J-1</li>
+          <li>Pack scripts USB WinPE</li>
+          <li>Déploiement Synology / Docker</li>
+          <li>Stripe paiement en ligne</li>
+          <li>Support prioritaire</li>
+          <li>Jusqu’à 5 techniciens</li>
+        </ul>
+        <a class="btn btn-primary plan-cta" href="/login">Passer en Pro</a>
+      </div>
+      <div class="plan">
+        <strong>Atelier+</strong>
+        <div class="price">549 €</div>
+        <p class="tagline">Pack one-shot : licence Starter + clé USB WinPE préparée + onboarding.</p>
+        <ul>
+          <li>Licence Starter à vie</li>
+          <li>Clé USB 32 Go préchargée*</li>
+          <li>WinXShell + RescueGrid + Unlocker</li>
+          <li>1h prise en main visio</li>
+          <li>Config SMTP / domaine</li>
+          <li>Check-list atelier PDF</li>
+          <li>*ou réduction si vous fournissez la clé</li>
+        </ul>
+        <a class="btn btn-ghost plan-cta" href="/login">Demander Atelier+</a>
+      </div>
+    </div>
+
+    <div class="compare-wrap reveal">
+      <table class="compare" aria-label="Comparatif des formules">
+        <thead>
+          <tr>
+            <th>Inclus</th>
+            <th>Essentiel</th>
+            <th>Starter</th>
+            <th>Pro</th>
+            <th>Atelier+</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Dashboard + CRM atelier</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td></tr>
+          <tr><td>Agent Windows / import ZIP</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td></tr>
+          <tr><td>Devis / factures / SMTP</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td></tr>
+          <tr><td>Bons dépôt QR</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td></tr>
+          <tr><td>Planning + espace client</td><td class="no">—</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td></tr>
+          <tr><td>SMS / WhatsApp + rappel J-1</td><td class="no">—</td><td class="no">—</td><td class="yes">Oui</td><td class="no">—</td></tr>
+          <tr><td>Scripts / pack WinPE</td><td class="no">—</td><td class="no">—</td><td class="yes">Oui</td><td class="yes">Clé fournie</td></tr>
+          <tr><td>Synology Docker + Stripe</td><td class="no">—</td><td class="no">—</td><td class="yes">Oui</td><td class="no">—</td></tr>
+          <tr><td>Onboarding 1h</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="yes">Oui</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block" id="faq">
+    <div class="block-head reveal">
+      <p class="eyebrow">FAQ</p>
+      <h2>Questions fréquentes</h2>
+      <p>Les réponses que les ateliers demandent avant d’acheter.</p>
+    </div>
+    <div class="faq reveal">
+      <details>
+        <summary>C’est hébergé où ?</summary>
+        <p>Chez vous : Windows local, ou NAS Synology en Docker (recommandé en Pro). Pas de dépendance cloud obligatoire — vos données clients restent dans votre atelier.</p>
+      </details>
+      <details>
+        <summary>Faut-il l’ADK Microsoft pour le WinPE ?</summary>
+        <p>Oui pour construire une clé bootable. Le pack Pro / Atelier+ fournit les scripts ; l’ADK + add-on WinPE se téléchargent gratuitement chez Microsoft. Atelier+ peut livrer une clé déjà flashée.</p>
+      </details>
+      <details>
+        <summary>Les SMS sont inclus dans le prix ?</summary>
+        <p>Le logiciel envoie via votre compte Twilio. Les crédits SMS/WhatsApp sont facturés par Twilio (quelques centimes par message). RescueGrid Pro active la fonction ; vous gardez le contrôle des coûts.</p>
+      </details>
+      <details>
+        <summary>Puis-je migrer d’Essentiel vers Pro plus tard ?</summary>
+        <p>Oui. Les données (clients, machines, devis) restent. On active SMS, WinPE et options Synology sans recommencer à zéro.</p>
+      </details>
+      <details>
+        <summary>Et Lockpick / Unlocker ?</summary>
+        <p>Outil de dépannage atelier (reset mot de passe hors ligne). Utilisation réservée aux machines dont vous avez l’autorisation légale du propriétaire.</p>
+      </details>
     </div>
   </section>
 
   <section class="closing">
-    <h2 class="reveal">Prêt à équiper l’atelier ?</h2>
-    <p class="reveal">Connectez-vous ou installez RescueGrid en local.</p>
+    <h2 class="reveal">Prêt à structurer l’atelier ?</h2>
+    <p class="reveal">Connectez-vous au dashboard, ou reparlez des formules — on configure SMTP, Synology et la clé USB avec vous.</p>
     <div class="ctas reveal" style="justify-content:center">
       <a class="btn btn-primary" href="/login">Accéder au dashboard</a>
-      <a class="btn btn-ghost" href="#demo">Revoir la démo</a>
+      <a class="btn btn-ghost" href="#tarifs">Revoir les tarifs</a>
     </div>
-    <p class="install-hint reveal">Installation locale : double-clic sur <code>Install-RescueGrid.bat</code></p>
+    <p class="install-hint reveal">Install local : <code>Install-RescueGrid.bat</code> — doc : <code>docs/TECHNICIAN_MANUAL.md</code></p>
   </section>
 
   <script>
     (function () {
-      // Scroll reveal
       var nodes = document.querySelectorAll(".reveal");
       if ("IntersectionObserver" in window) {
         var io = new IntersectionObserver(function (entries) {
           entries.forEach(function (e) {
-            if (e.isIntersecting) {
-              e.target.classList.add("in");
-              io.unobserve(e.target);
-            }
+            if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
           });
-        }, { threshold: 0.18, rootMargin: "0px 0px -8% 0px" });
+        }, { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
         nodes.forEach(function (n) { io.observe(n); });
       } else {
         nodes.forEach(function (n) { n.classList.add("in"); });
       }
 
-      // Demo reel (slideshow as muted video experience)
       var labels = ["Atelier & dashboard", "Bon de dépôt QR", "Clé USB WinPE"];
       var frames = Array.prototype.slice.call(document.querySelectorAll(".reel-frame"));
       var progress = document.getElementById("reelProgress");
       var labelEl = document.getElementById("reelLabel");
       var playBtn = document.getElementById("reelPlay");
-      var idx = 0;
-      var playing = true;
-      var duration = 4200;
-      var started = 0;
-      var raf = null;
+      var idx = 0, playing = true, duration = 4200, started = 0, raf = null;
 
       function show(i) {
         frames.forEach(function (f, n) { f.classList.toggle("is-active", n === i); });
         labelEl.textContent = labels[i];
-        idx = i;
-        started = performance.now();
+        idx = i; started = performance.now();
       }
-
       function tick(now) {
         if (!playing) return;
         var t = (now - started) / duration;
-        if (t >= 1) {
-          show((idx + 1) % frames.length);
-          t = 0;
-        }
+        if (t >= 1) { show((idx + 1) % frames.length); t = 0; }
         progress.style.width = (t * 100).toFixed(2) + "%";
         raf = requestAnimationFrame(tick);
       }
-
       playBtn.addEventListener("click", function () {
         playing = !playing;
         playBtn.textContent = playing ? "❚❚" : "▶";
@@ -593,28 +775,21 @@
         if (playing) {
           started = performance.now() - (parseFloat(progress.style.width) || 0) / 100 * duration;
           raf = requestAnimationFrame(tick);
-        } else if (raf) {
-          cancelAnimationFrame(raf);
-        }
+        } else if (raf) cancelAnimationFrame(raf);
       });
-
-      // Pause when off-screen
       var reel = document.getElementById("reel");
       if ("IntersectionObserver" in window && reel) {
         var ro = new IntersectionObserver(function (entries) {
           entries.forEach(function (e) {
             if (!e.isIntersecting && playing) {
-              playing = false;
-              playBtn.textContent = "▶";
+              playing = false; playBtn.textContent = "▶";
               if (raf) cancelAnimationFrame(raf);
             }
           });
-        }, { threshold: 0.25 });
+        }, { threshold: 0.2 });
         ro.observe(reel);
       }
-
-      show(0);
-      raf = requestAnimationFrame(tick);
+      show(0); raf = requestAnimationFrame(tick);
     })();
   </script>
 </body>
