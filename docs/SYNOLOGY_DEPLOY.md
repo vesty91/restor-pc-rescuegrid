@@ -148,8 +148,12 @@ conteneur nginx supplémentaire à maintenir.
    **Reverse Proxy** → Créer :
    - Source : HTTPS, `espace-client.restor-pc.fr`, port 443.
    - Destination : HTTP, `localhost`, port 8080.
-   - Onglet "En-tête personnalisé" : ajouter `X-Forwarded-Proto = https`
-     (nécessaire pour que l'application sache qu'elle est servie en HTTPS).
+   - Onglet "En-tête personnalisé" : ajouter au minimum :
+     - `X-Forwarded-Proto = https`
+     - `X-Real-IP = $remote_addr` (ou l’équivalent DSM « IP client »)
+     - `X-Forwarded-For = $proxy_add_x_forwarded_for` si disponible
+     Le backend ne lit ces en-têtes que si le peer TCP est un proxy de
+     confiance (`TRUSTED_PROXY_CIDRS`, défaut `127.0.0.1` + Docker).
 4. Associer le certificat Let's Encrypt créé à l'étape 2 à ce Reverse Proxy
    (DSM → Certificat → ... → Configurer les services, ou directement dans
    les paramètres du Reverse Proxy selon la version de DSM).

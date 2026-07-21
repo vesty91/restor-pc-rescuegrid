@@ -1,5 +1,11 @@
 # Changelog
 
+## v12.6.2 — Proxys de confiance XFF
+
+- **`TRUSTED_PROXY_CIDRS`** : liste CIDR configurable ; défauts resserrés
+  (`127.0.0.1`, `::1`, `172.16.0.0/12`) — plus de confiance aveugle à toute
+  la LAN. Validation stricte des IP dans `X-Forwarded-For` / `X-Real-IP`.
+
 ## v12.6.1 — Logos sécurisés + Lockpick hors dépôt public
 
 - **Upload logo** : validation Pillow (décodage réel), refus SVG, strip EXIF,

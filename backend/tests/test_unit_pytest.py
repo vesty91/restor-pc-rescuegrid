@@ -69,6 +69,73 @@ def test_reminder_succeeded_helpers():
     assert _reminder_permanently_unusable("smtp_error", "sms_not_configured") is False
 
 
+def test_get_client_ip_ignores_xff_from_untrusted_peer(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.delenv("TRUSTED_PROXY_CIDRS", raising=False)
+    from app import deps
+
+    deps.reload_trusted_proxy_networks()
+
+    req = SimpleNamespace(
+        client=SimpleNamespace(host="203.0.113.50"),
+        headers={"x-forwarded-for": "1.2.3.4"},
+    )
+    assert deps.get_client_ip(req) == "203.0.113.50"
+
+
+def test_get_client_ip_trusts_xff_from_localhost(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.delenv("TRUSTED_PROXY_CIDRS", raising=False)
+    from app import deps
+
+    deps.reload_trusted_proxy_networks()
+
+    req = SimpleNamespace(
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={"x-forwarded-for": "203.0.113.9, 127.0.0.1"},
+    )
+    assert deps.get_client_ip(req) == "203.0.113.9"
+
+
+def test_get_client_ip_rejects_garbage_xff(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.delenv("TRUSTED_PROXY_CIDRS", raising=False)
+    from app import deps
+
+    deps.reload_trusted_proxy_networks()
+
+    req = SimpleNamespace(
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={"x-forwarded-for": "not-an-ip, also-bad"},
+    )
+    assert deps.get_client_ip(req) == "127.0.0.1"
+
+
+def test_get_client_ip_custom_cidr_env(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("TRUSTED_PROXY_CIDRS", "10.0.0.1/32")
+    from app import deps
+
+    deps.reload_trusted_proxy_networks()
+
+    req = SimpleNamespace(
+        client=SimpleNamespace(host="10.0.0.1"),
+        headers={"x-real-ip": "198.51.100.7"},
+    )
+    assert deps.get_client_ip(req) == "198.51.100.7"
+
+    # Peer hors liste → ignore XFF
+    req2 = SimpleNamespace(
+        client=SimpleNamespace(host="10.0.0.2"),
+        headers={"x-forwarded-for": "198.51.100.7"},
+    )
+    assert deps.get_client_ip(req2) == "10.0.0.2"
+
+
 def test_process_logo_image_png_roundtrip():
     from io import BytesIO
 
