@@ -16,13 +16,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # sa.true() (pas DEFAULT 1) : PostgreSQL refuse un entier comme défaut BOOLEAN.
     with op.batch_alter_table("appointment") as batch:
         batch.add_column(
             sa.Column(
                 "reminder_opt_in",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("1"),
+                server_default=sa.true(),
             )
         )
         batch.add_column(sa.Column("sms_reminder_sent_at", sa.DateTime(), nullable=True))

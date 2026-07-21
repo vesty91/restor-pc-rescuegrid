@@ -5,7 +5,7 @@ from decimal import Decimal
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, false
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -245,7 +245,7 @@ class Appointment(Base):
     start_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     end_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="scheduled", server_default="scheduled")
-    reminder_opt_in: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    reminder_opt_in: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     sms_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
