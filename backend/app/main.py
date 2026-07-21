@@ -158,6 +158,57 @@ def _gb(value) -> str:
         return "-"
 
 
+# Win32_VideoController.AdapterRAM (uint32) sature à 4 294 967 295 (~4 Go).
+_ADAPTER_RAM_UINT32_MAX = 4_294_967_295
+
+
+def _adapter_ram_bytes(value) -> int | None:
+    """Normalise AdapterRAM ; None si valeur absente ou plafond WMI non fiable."""
+    if value in (None, ""):
+        return None
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    if n < 0:
+        # Souvent -1 = 0xFFFFFFFF saturé
+        n = n & 0xFFFFFFFF
+    if n <= 0:
+        return None
+    # WMI uint32 sature à 4 294 967 295 : toute carte ≥4 Go tombe dans cette zone.
+    # Une vraie VRAM 8/12/16 Go (agent corrigé / registre) dépasse uint32 → on affiche.
+    if (4 * 1024**3) - (16 * 1024**2) <= n <= _ADAPTER_RAM_UINT32_MAX:
+        return None
+    return n
+
+
+def _pick_primary_gpu(inv: dict) -> dict:
+    """Choisit la GPU discrète la plus pertinente (évite iGPU / Basic Display)."""
+    gpus = _as_list(
+        inv.get("video_controllers") or inv.get("video") or inv.get("gpu") or inv.get("graphics")
+    )
+    if not gpus:
+        return {}
+
+    def _score(g: dict) -> tuple:
+        name = str(_pick(g, "Name", "name", "Caption", "Model") or "").lower()
+        raw = _pick(g, "AdapterRAM", "Memory", "RAM", "qwMemorySize", "DedicatedVideoMemory")
+        try:
+            ram = int(float(raw)) if raw not in (None, "") else 0
+            if ram < 0:
+                ram = ram & 0xFFFFFFFF
+        except (TypeError, ValueError):
+            ram = 0
+        discrete = any(
+            token in name
+            for token in ("nvidia", "geforce", "rtx", "gtx", "radeon", "amd ", "arc ")
+        )
+        junk = any(token in name for token in ("microsoft basic", "remote desktop", "virtual"))
+        return (0 if junk else 1, 1 if discrete else 0, ram)
+
+    return max((g for g in gpus if isinstance(g, dict)), key=_score, default={})
+
+
 def _tb(value) -> str:
     try:
         tb = float(value) / (1024 ** 4)
@@ -204,7 +255,9 @@ def _hardware_from_inventory(inv: dict) -> dict:
     machine = _first_dict(inv.get("machine"), inv.get("system"), inv.get("computer_system"), inv.get("os"))
     osinfo = _first_dict(inv.get("os"), inv.get("operating_system"), inv.get("windows"), inv.get("machine"))
     cpu = _first_dict(inv.get("processors"), inv.get("processor"), inv.get("cpu"))
-    gpu = _first_dict(inv.get("video_controllers"), inv.get("video"), inv.get("gpu"), inv.get("graphics"))
+    gpu = _pick_primary_gpu(inv) or _first_dict(
+        inv.get("video_controllers"), inv.get("video"), inv.get("gpu"), inv.get("graphics")
+    )
     disks = _as_list(inv.get("disks") or inv.get("physical_disks") or inv.get("drives") or inv.get("storage"))
 
     cpu_name = _pick(cpu, "Name", "name", "ProcessorName", "Model") or "-"
@@ -216,8 +269,9 @@ def _hardware_from_inventory(inv: dict) -> dict:
     ram = _gb(ram_bytes) if ram_bytes else (_pick(machine, "RAM", "ram", "Memory") or "-")
 
     gpu_name = _pick(gpu, "Name", "name", "Caption", "Model") or "-"
-    gpu_ram = _pick(gpu, "AdapterRAM", "Memory", "RAM")
-    gpu_sub = _gb(gpu_ram) if gpu_ram else ""
+    gpu_ram = _pick(gpu, "AdapterRAM", "qwMemorySize", "DedicatedVideoMemory", "Memory", "RAM")
+    gpu_ram_bytes = _adapter_ram_bytes(gpu_ram)
+    gpu_sub = _gb(gpu_ram_bytes) if gpu_ram_bytes is not None else ""
 
     windows_name = (_pick(osinfo, "WindowsProductName", "Caption", "ProductName", "Name") or
                     _pick(machine, "WindowsProductName", "Caption", "ProductName") or "-")

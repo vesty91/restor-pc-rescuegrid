@@ -69,7 +69,33 @@ def test_reminder_succeeded_helpers():
     assert _reminder_permanently_unusable("smtp_error", "sms_not_configured") is False
 
 
-def test_health_and_ready_endpoints(migrated_db):
+def test_adapter_ram_wmi_cap_hidden(migrated_db):
+    """AdapterRAM uint32 saturé (~4 Go) ne doit pas s'afficher comme VRAM réelle."""
+    from app.main import _adapter_ram_bytes, _hardware_from_inventory, _pick_primary_gpu
+
+    assert _adapter_ram_bytes(4_294_967_295) is None
+    assert _adapter_ram_bytes(-1) is None
+    assert _adapter_ram_bytes(12 * 1024**3) == 12 * 1024**3
+
+    inv = {
+        "video_controllers": [
+            {"Name": "Microsoft Basic Display Adapter", "AdapterRAM": 0},
+            {"Name": "NVIDIA GeForce RTX 4070 SUPER", "AdapterRAM": 4_294_967_295},
+        ]
+    }
+    gpu = _pick_primary_gpu(inv)
+    assert "4070" in gpu["Name"]
+    specs = _hardware_from_inventory(inv)
+    assert "4070" in specs["gpu"]
+    assert specs["gpu_sub"] == ""  # pas de faux « 4 Go »
+
+    inv2 = {
+        "video_controllers": [
+            {"Name": "NVIDIA GeForce RTX 4070 SUPER", "AdapterRAM": 12 * 1024**3},
+        ]
+    }
+    assert _hardware_from_inventory(inv2)["gpu_sub"] == "12 Go"
+
     from fastapi.testclient import TestClient
 
     from app.auth import create_default_admin

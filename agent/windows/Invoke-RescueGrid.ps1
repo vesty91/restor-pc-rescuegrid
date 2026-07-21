@@ -934,8 +934,55 @@ function Get-ProcessorInfo {
 }
 
 function Get-VideoControllerInfo {
+    # Win32_VideoController.AdapterRAM est un uint32 → plafonné à ~4 Go.
+    # VRAM réelle (>4 Go) : HardwareInformation.qwMemorySize dans le registre classe display.
     return Invoke-SafeCommand -Script {
-        Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion, VideoModeDescription, VideoProcessor
+        $regVramByLabel = @{}
+        $classPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+        Get-ChildItem -Path $classPath -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -match '^\d{4}$' } |
+            ForEach-Object {
+                $props = Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue
+                if (-not $props) { return }
+                $qw = $props."HardwareInformation.qwMemorySize"
+                if (-not $qw) { return }
+                $label = $props."HardwareInformation.AdapterString"
+                if (-not $label) { $label = $props.DriverDesc }
+                if ($label) {
+                    $regVramByLabel[[string]$label] = [int64]$qw
+                }
+            }
+
+        Get-CimInstance Win32_VideoController | ForEach-Object {
+            $name = [string]$_.Name
+            $wmiRam = [int64]0
+            if ($null -ne $_.AdapterRAM) {
+                # -1 / 0xFFFFFFFF côté WMI → uint32 max (~4 Go)
+                try { $wmiRam = [int64]([uint32]$_.AdapterRAM) } catch { $wmiRam = [int64]$_.AdapterRAM }
+            }
+
+            $vram = $wmiRam
+            $regRam = $null
+            foreach ($label in $regVramByLabel.Keys) {
+                if ($name -eq $label -or $name -like "*$label*" -or $label -like "*$name*") {
+                    $regRam = $regVramByLabel[$label]
+                    break
+                }
+            }
+            # Si WMI est saturé (~4 Go) ou absent, ou si le registre est plus grand → registre.
+            $wmiSaturated = ($wmiRam -le 0) -or ($wmiRam -ge ([int64]4GB - 1MB))
+            if ($regRam -and ($wmiSaturated -or $regRam -gt $wmiRam)) {
+                $vram = $regRam
+            }
+
+            [PSCustomObject]@{
+                Name                 = $name
+                AdapterRAM           = $vram
+                DriverVersion        = $_.DriverVersion
+                VideoModeDescription = $_.VideoModeDescription
+                VideoProcessor       = $_.VideoProcessor
+            }
+        }
     } -Fallback @()
 }
 
