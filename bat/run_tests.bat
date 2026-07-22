@@ -2,28 +2,8 @@
 chcp 65001 >nul
 set PYTHONUTF8=1
 title Restor-PC RescueGrid - Tests
-cd /d "%~dp0..\backend"
-
-if not exist ".venv\" (
-    echo [INFO] Creation environnement virtuel...
-    py -3.12 -m venv .venv 2>nul
-    if errorlevel 1 python -m venv .venv
-)
-
-call .venv\Scripts\activate.bat
-python -m pip install -q -r requirements.txt
-
-echo [INFO] Execution des tests d'integration...
-python tests\run_tests.py
+cd /d "%~dp0.."
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\ps1\Run-Tests.ps1"
 set EXIT_CODE=%errorlevel%
-
-if %EXIT_CODE% equ 0 (
-    echo.
-    echo [OK] Tous les tests sont passes.
-) else (
-    echo.
-    echo [ERREUR] Certains tests ont echoue. Code: %EXIT_CODE%
-)
-
-pause
+if %EXIT_CODE% neq 0 pause
 exit /b %EXIT_CODE%

@@ -134,8 +134,8 @@ else {
     Write-Host "  -> tools\ vide — lancez ps1\Install-RescueGridTools.ps1 puis relancez ce pack." -ForegroundColor Yellow
 }
 
-# --- 5) README pack ---
-Write-Host "[5/5] PACK_USB_README.txt..." -ForegroundColor White
+# --- 5) README + licences + empreintes ---
+Write-Host "[5/5] PACK_USB_README + LICENSES + SHA256..." -ForegroundColor White
 $readme = @"
 Restor-PC RescueGrid — Pack USB
 ================================
@@ -154,7 +154,12 @@ Double-clic Start-RescueGrid.cmd a la racine de la cle.
 
 Unlocker
 --------
-RescueGrid\Lockpick\Unlocker.cmd (menu 64-bit).
+RescueGrid\Lockpick\Unlocker.cmd (menu 64-bit) — si present en local.
+
+Integrite & licences
+--------------------
+- SHA256SUMS.txt  : empreintes des fichiers cles du pack
+- LICENSES.md     : origines / licences (WinPE, outils, Lockpick hors depot)
 
 Si la cle ne boot pas
 ---------------------
@@ -166,6 +171,46 @@ ou
 Doc : docs\TECHNICIAN_MANUAL.md
 "@
 Set-Content -Path (Join-Path $driveRoot "PACK_USB_README.txt") -Value $readme -Encoding UTF8
+
+$licensesSrc = Join-Path $projectRoot "docs\LICENSES.md"
+if (Test-Path $licensesSrc) {
+    Copy-Item -Force $licensesSrc (Join-Path $driveRoot "LICENSES.md")
+    Write-Host "  -> LICENSES.md" -ForegroundColor Green
+}
+
+# Empreintes des fichiers cles (pas Lockpick binaires ni tools\ volumineux).
+$shaPath = Join-Path $driveRoot "SHA256SUMS.txt"
+$patterns = @(
+    "PACK_USB_README.txt",
+    "LICENSES.md",
+    "Start-RescueGrid.cmd",
+    "Start-RescueGrid.ps1",
+    "RescueGrid\*.ps1",
+    "RescueGrid\*.cmd",
+    "RescueGrid\config\*",
+    "sources\boot.wim"
+)
+$hashLines = New-Object System.Collections.Generic.List[string]
+$hashLines.Add("# Restor-PC RescueGrid — SHA-256 (pack USB)")
+$hashLines.Add("# Genere : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
+$hashLines.Add("# Format : <hash>  <chemin relatif>")
+$hashLines.Add("")
+
+$seen = @{}
+foreach ($pat in $patterns) {
+    $fullPat = Join-Path $driveRoot $pat
+    Get-ChildItem -Path $fullPat -File -ErrorAction SilentlyContinue | ForEach-Object {
+        $rel = $_.FullName.Substring($driveRoot.Length).TrimStart('\', '/')
+        if ($seen.ContainsKey($rel)) { return }
+        # Exclure Lockpick et tools (tiers / volumineux)
+        if ($rel -match '(?i)^RescueGrid\\Lockpick\\' -or $rel -match '(?i)^RescueGrid\\tools\\') { return }
+        $seen[$rel] = $true
+        $h = (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLowerInvariant()
+        $hashLines.Add("$h  $rel")
+    }
+}
+Set-Content -Path $shaPath -Value $hashLines -Encoding UTF8
+Write-Host "  -> SHA256SUMS.txt ($($seen.Count) fichiers)" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Pack USB termine sur $driveRoot" -ForegroundColor Green

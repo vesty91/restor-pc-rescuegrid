@@ -1,5 +1,14 @@
 # Changelog
 
+## v12.6.4 — Pack USB (SHA-256/licences), BAT→PS1, CSP/mypy
+
+- **Pack USB** : `LICENSES.md` + `SHA256SUMS.txt` générés par
+  `Build-ReadyUSB.ps1` (doc `docs/LICENSES.md`).
+- **BAT→PS1** : `Start-Dashboard`, `Run-Tests`, `Start-Docker-Synology`
+  (les `.bat` restent des lanceurs double-clic).
+- **CSP** : `base-uri`, `form-action`, `object-src` ; mypy **bloquant**
+  sur `csrf` / `deps` / `logo_upload` / `timeutil`.
+
 ## v12.6.3 — Encodages UTF-8 + naming Docker unifié
 
 - **Mojibake** corrigé dans `run_tests.py` et `install_dependencies.ps1` ;

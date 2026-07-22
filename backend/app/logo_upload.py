@@ -22,6 +22,7 @@ def process_logo_image(content: bytes, *, max_edge: int = _MAX_EDGE_PX) -> bytes
     """
     try:
         from PIL import Image, ImageOps, UnidentifiedImageError
+        from PIL.Image import Image as PilImage
     except ImportError as exc:  # pragma: no cover
         raise ValueError("Pillow non installé — impossible de valider le logo") from exc
 
@@ -29,22 +30,22 @@ def process_logo_image(content: bytes, *, max_edge: int = _MAX_EDGE_PX) -> bytes
     Image.MAX_IMAGE_PIXELS = _MAX_PIXELS
 
     try:
-        img = Image.open(io.BytesIO(content))
-        img.load()
+        opened = Image.open(io.BytesIO(content))
+        opened.load()
     except UnidentifiedImageError as exc:
         raise ValueError("Fichier image illisible ou format non supporté") from exc
     except Exception as exc:
         logger.warning("Décodage logo impossible : %s", exc)
         raise ValueError("Fichier image illisible ou format non supporté") from exc
 
-    fmt = (img.format or "").upper()
+    fmt = (opened.format or "").upper()
     if fmt == "JPG":
         fmt = "JPEG"
     if fmt not in _ALLOWED_FORMATS:
         raise ValueError(f"Format image refusé ({fmt or 'inconnu'}) — PNG/JPEG/WEBP uniquement")
 
     # Oriente selon EXIF puis supprime métadonnées en ré-encodant.
-    img = ImageOps.exif_transpose(img)
+    img: PilImage = ImageOps.exif_transpose(opened) or opened
 
     if img.mode in ("P", "LA", "PA"):
         img = img.convert("RGBA")

@@ -31,7 +31,12 @@ jobs:
         env:
           DATABASE_URL: sqlite:////tmp/rescuegrid_migration_test.db
         run: python -m alembic upgrade head
-      - name: Mypy (typage progressif)
+      - name: Mypy (modules stables, bloquant)
+        working-directory: backend
+        run: |
+          python -m mypy app/csrf.py app/deps.py app/logo_upload.py app/timeutil.py \
+            --follow-imports=silent --config-file ../pyproject.toml
+      - name: Mypy (app complet, progressif)
         working-directory: backend
         # Non bloquant tant que le typage n'est pas généralisé au dépôt.
         continue-on-error: true

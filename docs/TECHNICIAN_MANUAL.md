@@ -24,7 +24,7 @@ Ce script enchaîne :
 3. Copie `Lockpick\` → `RescueGrid\Lockpick\` si présent en local
    (hors dépôt GitHub public — voir `Lockpick/README.md`)
 4. Copie `tools\` projet si non vide
-5. Écrit `PACK_USB_README.txt` à la racine de la clé
+5. Écrit `PACK_USB_README.txt`, `LICENSES.md`, `SHA256SUMS.txt` à la racine de la clé
 
 Pour **rendre la clé bootable** (ADK + WinPE, **efface** la clé) :
 

@@ -580,7 +580,8 @@ async def security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; "
+        "img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
         "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
     )
     from .auth import COOKIE_SECURE

@@ -804,10 +804,14 @@ def test_upload_rejects_non_zip_content() -> None:
 
 def test_security_headers_present() -> None:
     r = client.get("/health")
+    csp = r.headers.get("Content-Security-Policy", "")
     ok = (
         r.headers.get("X-Frame-Options") == "DENY"
         and r.headers.get("X-Content-Type-Options") == "nosniff"
         and "Content-Security-Policy" in r.headers
+        and "frame-ancestors 'none'" in csp
+        and "base-uri 'self'" in csp
+        and "object-src 'none'" in csp
     )
     record("En-têtes de sécurité HTTP présents", ok, str(dict(r.headers)))
 
