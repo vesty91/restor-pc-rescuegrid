@@ -460,9 +460,8 @@ def test_backup_rotation_unit() -> None:
 
 
 def test_backup_perform_and_rotate_sqlite() -> None:
-    """perform_backup_and_rotate doit copier le fichier SQLite et créer une
-    entrée listable par list_backups() — testé avec des dossiers isolés
-    (aucun impact sur la vraie base de développement)."""
+    """perform_backup_and_rotate doit respecter DATABASE_URL (nom custom) et
+    créer une entrée listable — dossiers isolés (pas d'impact sur la vraie base)."""
     import sqlite3
 
     from app import backup as backup_module
@@ -471,7 +470,7 @@ def test_backup_perform_and_rotate_sqlite() -> None:
         base_dir = Path(tmp)
         storage_dir = Path(tmp) / "storage"
         storage_dir.mkdir()
-        db_path = base_dir / "rescuegrid.db"
+        db_path = base_dir / "atelier_custom.db"
         conn = sqlite3.connect(db_path)
         try:
             conn.execute("CREATE TABLE ping (id INTEGER PRIMARY KEY)")
@@ -479,20 +478,25 @@ def test_backup_perform_and_rotate_sqlite() -> None:
             conn.commit()
         finally:
             conn.close()
-        dest = backup_module.perform_backup_and_rotate(base_dir, storage_dir)
-        backups = backup_module.list_backups(storage_dir)
-        verify = sqlite3.connect(dest)
+        previous_url = backup_module.DATABASE_URL
+        backup_module.DATABASE_URL = f"sqlite:///{db_path.as_posix()}"
         try:
-            row = verify.execute("SELECT id FROM ping").fetchone()
+            dest = backup_module.perform_backup_and_rotate(base_dir, storage_dir)
+            backups = backup_module.list_backups(storage_dir)
+            verify = sqlite3.connect(dest)
+            try:
+                row = verify.execute("SELECT id FROM ping").fetchone()
+            finally:
+                verify.close()
+            ok = (
+                dest.exists()
+                and dest.name.startswith("rescuegrid_")
+                and len(backups) == 1
+                and row == (1,)
+            )
+            record("perform_backup_and_rotate (SQLite via DATABASE_URL)", ok, str(dest))
         finally:
-            verify.close()
-        ok = (
-            dest.exists()
-            and dest.name.startswith("rescuegrid_")
-            and len(backups) == 1
-            and row == (1,)
-        )
-        record("perform_backup_and_rotate (SQLite, dossiers isolés)", ok, str(dest))
+            backup_module.DATABASE_URL = previous_url
 
 
 def test_backup_history_requires_admin() -> None:

@@ -59,6 +59,46 @@ def test_format_app_local_roundtrip():
     assert "09:30" in format_app_local(utc)
 
 
+def test_local_date_crosses_midnight_paris():
+    """23:30 UTC hiver = 00:30 Paris le lendemain — groupement planning."""
+    from app.timeutil import local_date
+
+    utc = datetime(2026, 1, 15, 23, 30, tzinfo=timezone.utc)
+    assert local_date(utc) == datetime(2026, 1, 16).date()
+    assert local_date(None) is None
+
+
+def test_local_week_bounds_utc_monday_aligned():
+    from app.timeutil import app_tz, local_week_bounds_utc
+
+    start, end = local_week_bounds_utc(offset_weeks=0)
+    assert start.tzinfo == timezone.utc
+    assert (end - start).days == 7
+    local_start = start.astimezone(app_tz())
+    assert local_start.weekday() == 0
+    assert local_start.hour == 0 and local_start.minute == 0
+
+
+def test_sqlite_db_path_respects_database_url(tmp_path, monkeypatch):
+    import sqlite3
+
+    from app import backup as backup_module
+
+    custom = tmp_path / "custom_atelier.db"
+    conn = sqlite3.connect(custom)
+    try:
+        conn.execute("CREATE TABLE t (id INTEGER)")
+        conn.commit()
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(backup_module, "DATABASE_URL", f"sqlite:///{custom.as_posix()}")
+    assert backup_module._sqlite_db_path(tmp_path) == custom.resolve()
+
+    monkeypatch.setattr(backup_module, "DATABASE_URL", "sqlite:///:memory:")
+    assert backup_module._sqlite_db_path(tmp_path) is None
+
+
 def test_reminder_succeeded_helpers():
     from app.appointment_reminders import _reminder_permanently_unusable, _reminder_succeeded
 
@@ -219,7 +259,10 @@ def test_adapter_ram_wmi_cap_hidden(migrated_db):
 
     ready = client.get("/ready")
     assert ready.status_code == 200
-    assert ready.json().get("status") == "ready"
+    body = ready.json()
+    assert body.get("status") == "ready"
+    assert body.get("alembic")
+    assert body.get("version")
 
 
 def test_migration_0011_columns_present(migrated_db, db_session):

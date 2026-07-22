@@ -1520,8 +1520,7 @@ function Invoke-Ddrescue {
         $wslDdrescue = Get-Command wsl -ErrorAction SilentlyContinue
         if ($wslDdrescue) {
             Write-Host "[ddrescue] Utilisation via WSL..." -ForegroundColor Yellow
-            $ddrescueCmd = "wsl ddrescue -d -f -r3 $SourceDisk $ImagePath $LogPath"
-            Invoke-Expression $ddrescueCmd
+            & wsl.exe -- ddrescue -d -f -r3 -- $SourceDisk $ImagePath $LogPath
             return $LASTEXITCODE
         }
         Write-Host "[ddrescue] NON DISPONIBLE - Installer ddrescue ou WSL" -ForegroundColor Red

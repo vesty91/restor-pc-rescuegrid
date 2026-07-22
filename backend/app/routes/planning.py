@@ -30,7 +30,7 @@ from ..helpers import paginate_query, status_label_fr
 from ..models import Appointment, Client, Intervention, User
 from ..services.mail import send_text_email
 from ..services.sms import send_sms, send_whatsapp, sms_configured, whatsapp_configured
-from ..timeutil import format_app_local, format_app_local_time, parse_form_local_to_utc
+from ..timeutil import format_app_local, format_app_local_time, local_date, local_week_bounds_utc, parse_form_local_to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -144,12 +144,10 @@ def planning_list(request: Request, range_filter: str = "week", page: int = 1, s
     now = datetime.now(timezone.utc)
     query = select(Appointment).order_by(Appointment.start_at.asc())
     if range_filter == "week":
-        start_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-        end_week = start_week + timedelta(days=7)
+        start_week, end_week = local_week_bounds_utc(offset_weeks=0)
         query = query.where(Appointment.start_at >= start_week, Appointment.start_at < end_week)
     elif range_filter == "next_week":
-        start_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=7)
-        end_week = start_week + timedelta(days=7)
+        start_week, end_week = local_week_bounds_utc(offset_weeks=1)
         query = query.where(Appointment.start_at >= start_week, Appointment.start_at < end_week)
     elif range_filter == "upcoming":
         query = query.where(Appointment.start_at >= now)
@@ -159,9 +157,10 @@ def planning_list(request: Request, range_filter: str = "week", page: int = 1, s
     # Clé "entries" (pas "items") : Jinja résout d'abord les attributs Python avant
     # les clés de dict, et dict.items est une méthode intégrée — "day_group.items"
     # renverrait donc la méthode plutôt que la liste si on l'avait nommée ainsi.
+    # Groupement par jour CIVIL atelier (Europe/Paris), pas par date UTC.
     grouped = [
         {"day": day, "entries": list(entries)}
-        for day, entries in groupby(appointments, key=lambda a: a.start_at.date())
+        for day, entries in groupby(appointments, key=lambda a: local_date(a.start_at))
     ]
 
     clients = session.scalars(select(Client).order_by(Client.name)).all()

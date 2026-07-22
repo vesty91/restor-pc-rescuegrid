@@ -1,5 +1,20 @@
 # Changelog
 
+## v12.6.5 — Deploy NAS sûr + readiness + planning Paris
+
+- **Deploy NAS** : build image `:sha` avant tests ; `pg_dump` pré-migration
+  obligatoire (annule si KO/vide) ; tag `:latest` seulement après migrate ;
+  probe `/ready` uniquement (fallback `/health` seulement si 404).
+- **`GET /ready`** : DB + révision Alembic (= head) + probe écriture
+  `STORAGE`/`REPORT` ; healthcheck Docker/compose pointe `/ready`.
+- **Backup SQLite** : chemin lu depuis `DATABASE_URL` (plus hardcodé
+  `rescuegrid.db`).
+- **Planning** : filtres semaine et groupement jour via `Europe/Paris`
+  (`local_week_bounds_utc` / `local_date`).
+- **Agent** : `Start-Agent.ps1` (plus de concat CMD) ; ddrescue WSL sans
+  `Invoke-Expression`.
+- **Uptime Kuma** : bind `127.0.0.1:3001` seulement.
+
 ## v12.6.4 — Pack USB (SHA-256/licences), BAT→PS1, CSP/mypy
 
 - **Pack USB** : `LICENSES.md` + `SHA256SUMS.txt` générés par

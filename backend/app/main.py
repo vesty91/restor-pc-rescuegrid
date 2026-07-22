@@ -1,5 +1,5 @@
 """
-main.py — Restor-PC RescueGrid v12.6.0
+main.py — Restor-PC RescueGrid
 --------------------------------------
 Point d'entrée FastAPI — réduit à l'essentiel.
 
@@ -972,19 +972,64 @@ def healthcheck():
 
 @app.get("/ready")
 def readiness():
-    """Readiness : process + base de données joignable (pour probe deploy/NAS)."""
+    """Readiness : DB + révision Alembic + stockage inscriptible (probe deploy/NAS)."""
     from sqlalchemy import text
 
+    detail: str | None = None
+    current: str | None = None
     try:
         with SessionLocal() as session:
             session.execute(text("SELECT 1"))
-        return {"status": "ready", "version": APP_VERSION}
+            try:
+                current = session.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar()
+            except Exception:
+                detail = "alembic_version_missing"
+                raise
+            if not current:
+                detail = "alembic_version_empty"
+                raise RuntimeError(detail)
+
+            expected = _expected_alembic_head()
+            if expected and str(current) not in expected.split(","):
+                detail = f"alembic_mismatch:current={current}:expected={expected}"
+                raise RuntimeError(detail)
+
+        for folder in (STORAGE_DIR, REPORT_DIR):
+            folder.mkdir(parents=True, exist_ok=True)
+            probe = folder / ".ready_write_probe"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+
+        return {
+            "status": "ready",
+            "version": APP_VERSION,
+            "alembic": current,
+        }
     except Exception as exc:
-        logger.warning("Readiness KO : %s", exc)
+        logger.warning("Readiness KO : %s", detail or exc)
         return JSONResponse(
-            {"status": "not_ready", "version": APP_VERSION, "detail": "database_unavailable"},
+            {
+                "status": "not_ready",
+                "version": APP_VERSION,
+                "detail": detail or "database_or_storage_unavailable",
+            },
             status_code=503,
         )
+
+
+def _expected_alembic_head() -> str:
+    """Révision(s) head connue(s) du code embarqué (alembic.ini + versions/)."""
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        cfg = Config(str(BASE_DIR / "alembic.ini"))
+        script = ScriptDirectory.from_config(cfg)
+        heads = list(script.get_heads())
+        return ",".join(sorted(heads)) if heads else ""
+    except Exception as exc:
+        logger.warning("Lecture Alembic head impossible : %s", exc)
+        return ""
 
 
 MAX_LOGO_BYTES = int(os.getenv("MAX_LOGO_BYTES", str(5 * 1024 * 1024)))

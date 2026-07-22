@@ -2,45 +2,16 @@
 # nas_auto_deploy.sh — déploiement continu (CD) pour le NAS Synology
 # ---------------------------------------------------------------------------
 # À exécuter périodiquement (toutes les ~15 min) via le Planificateur de
-# tâches Synology (Panneau de configuration > Planificateur de tâches >
-# Créer > Tâche déclenchée > Script défini par l'utilisateur) — voir
-# docs/SYNOLOGY_DEPLOY.md section "Déploiement automatique (CD)".
+# tâches Synology — voir docs/SYNOLOGY_DEPLOY.md.
 #
-# Pourquoi un script planifié plutôt qu'un webhook GitHub -> NAS ?
-# Le NAS n'expose que le port 443 (HTTPS) sur internet (voir reverse proxy) ;
-# un webhook de déploiement nécessiterait soit d'ouvrir un nouveau port, soit
-# de donner au conteneur backend (déjà exposé publiquement) un accès au socket
-# Docker de l'hôte pour pouvoir se reconstruire/redémarrer lui-même — un
-# niveau de confiance équivalent à root sur le NAS accordé à un service public.
-# Un script planifié tournant directement sur l'hôte (donc déjà légitimement
-# capable d'exécuter `docker`/`git`) atteint le même objectif (déploiement
-# sans intervention manuelle) sans exposer de nouvelle surface d'attaque —
-# seul coût : jusqu'à ~15 minutes de latence après un push sur main.
-#
-# Séquence (chaque étape ne s'exécute que si la précédente a réussi) :
-#   1. build de la nouvelle image (le conteneur en prod actuel n'est pas touché)
-#   2. tag permanent de cette image par hash Git (rollback possible)
-#   3. garde de tests : la suite de tests tourne DANS un conteneur jetable de
-#      cette nouvelle image (SQLite isolé, aucun accès à la base de prod) —
-#      si un test casse, on s'arrête ici, le conteneur en prod continue de
-#      tourner sans interruption avec l'ancienne image
-#   4. migration Alembic sur la base de prod, AVANT la bascule du conteneur —
-#      avec l'ancien ordre (bascule puis migration), le nouveau code tournait
-#      transitoirement contre l'ancien schéma (bug garanti dès qu'une
-#      migration ajoute une colonne que le nouveau code lit immédiatement).
-#      L'inverse (ancien code contre nouveau schéma, pendant les quelques
-#      secondes entre migration et bascule) n'est risqué que si une migration
-#      supprime/renomme une colonne encore lue par l'ancien code — situation
-#      qui ne s'est jamais produite ici (migrations additives uniquement).
-#   5. bascule du conteneur backend sur la nouvelle image
-#   6. vérification de santé (/health) ; en cas d'échec, rollback automatique
-#      vers la précédente image taguée (la migration, elle, n'est PAS annulée
-#      automatiquement — trop risqué sans confirmation humaine)
-#
-# Sûr par construction : n'avance le marqueur .last_deployed_commit qu'après
-# un déploiement intégralement réussi ; en cas d'échec à n'importe quelle
-# étape avant la bascule, l'ancien conteneur continue de tourner sans
-# interruption et une alerte ntfy est envoyée (voir notify_deploy.sh).
+# Séquence :
+#   1. build image taguée UNIQUEMENT :sha (pas encore :latest)
+#   2. garde de tests (run_tests + pytest) sur cette image
+#   3. pg_dump pré-migration (annule si dump KO / vide)
+#   4. alembic upgrade head
+#   5. tag :sha → :latest puis bascule conteneur
+#   6. vérification /ready uniquement (pas de fallback /health si DB KO)
+#   7. rollback image si /ready échoue (migration NON annulée — dump dispo)
 set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -54,12 +25,10 @@ COMPOSE_FILE="docker-compose.synology.yml"
 DOCKER="/usr/local/bin/docker"
 IMAGE_REPO="rescuegrid-backend"
 NETWORK="rescuegrid_rescuegrid"
-# Nombre d'images taguées par hash à conserver pour un rollback manuel rapide
-# (au-delà, les plus anciennes sont supprimées pour ne pas saturer le disque).
 KEEP_IMAGES=10
+KEEP_PREDEPLOY=10
+PREDEPLOY_DIR="$REPO_DIR/volumes/storage/backups"
 
-# Ne garde que les 2000 dernières lignes à chaque exécution, pour ne pas
-# laisser grossir le log indéfiniment (exécution toutes les ~15 min, sans fin).
 if [ -f "$LOG_FILE" ]; then
   tail -n 2000 "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
 fi
@@ -88,8 +57,6 @@ fi
     exit 1
   fi
 
-  # Après pull, relancer CE script pour utiliser la dernière logique (healthcheck,
-  # etc.). Sans ça, un bash déjà lancé garde l'ancienne version en mémoire.
   if [ "${NAS_DEPLOY_REEXEC:-}" != "1" ]; then
     echo "Rechargement du script de déploiement (post git pull)..."
     export NAS_DEPLOY_REEXEC=1
@@ -99,31 +66,34 @@ fi
   SHORT_SHA="${REMOTE_COMMIT:0:12}"
   NEW_TAG="$IMAGE_REPO:$SHORT_SHA"
 
-  echo "Reconstruction de l'image backend..."
+  echo "Reconstruction de l'image backend ($NEW_TAG) — sans toucher :latest..."
   export APP_VERSION="$(cat VERSION 2>/dev/null || echo "0.0.0-dev")"
-  if ! "$DOCKER" compose -f "$COMPOSE_FILE" build backend; then
-    echo "ECHEC : build de l'image backend — l'ancien conteneur continue de tourner, rien n'est coupé."
-    "$REPO_DIR/scripts/notify_deploy.sh" "Echec build Docker pour $REMOTE_COMMIT — ancienne version toujours active, verification necessaire."
+  if ! "$DOCKER" build \
+        -t "$NEW_TAG" \
+        --build-arg "APP_VERSION=$APP_VERSION" \
+        -f backend/Dockerfile \
+        backend/; then
+    echo "ECHEC : build de l'image backend — l'ancien conteneur continue de tourner."
+    "$REPO_DIR/scripts/notify_deploy.sh" "Echec build Docker pour $REMOTE_COMMIT — ancienne version toujours active."
     exit 1
   fi
 
-  # Tag permanent (survit aux futurs rebuilds qui écrasent IMAGE_REPO:latest) —
-  # permet un rollback manuel via `docker tag rescuegrid-backend:<ancien_sha> rescuegrid-backend:latest`.
-  "$DOCKER" tag "$IMAGE_REPO:latest" "$NEW_TAG"
-
-  echo "Garde de tests : exécution de la suite de tests contre la nouvelle image (isolée, SQLite jetable)..."
+  echo "Garde de tests : run_tests.py contre $NEW_TAG..."
   if ! "$DOCKER" run --rm --entrypoint python "$NEW_TAG" tests/run_tests.py; then
-    echo "ECHEC : la suite de tests a échoué sur la nouvelle image — déploiement annulé, l'ancien conteneur continue de tourner."
-    "$REPO_DIR/scripts/notify_deploy.sh" "Echec des tests pour $REMOTE_COMMIT — deploiement annule, ancienne version toujours active."
+    echo "ECHEC : run_tests.py a échoué — déploiement annulé."
+    "$REPO_DIR/scripts/notify_deploy.sh" "Echec des tests (run_tests) pour $REMOTE_COMMIT — deploiement annule."
     "$DOCKER" rmi "$NEW_TAG" > /dev/null 2>&1 || true
     exit 1
   fi
 
-  # Lecture directe de .env (et non simple `source`, qui échouerait sur les
-  # lignes commentées/valeurs à espaces) pour reconstruire DATABASE_URL, comme
-  # le fait docker-compose pour le conteneur backend (voir
-  # docker-compose.synology.yml). Nécessaire ici : `docker run` (contrairement
-  # à `docker compose up`) n'effectue aucune substitution de variables.
+  echo "Garde de tests : pytest unitaire contre $NEW_TAG..."
+  if ! "$DOCKER" run --rm --entrypoint python "$NEW_TAG" -m pytest tests/test_unit_pytest.py -q; then
+    echo "ECHEC : pytest a échoué — déploiement annulé."
+    "$REPO_DIR/scripts/notify_deploy.sh" "Echec des tests (pytest) pour $REMOTE_COMMIT — deploiement annule."
+    "$DOCKER" rmi "$NEW_TAG" > /dev/null 2>&1 || true
+    exit 1
+  fi
+
   _env_var() {
     local key="$1" default="$2"
     local raw
@@ -136,41 +106,81 @@ fi
   PG_PASSWORD="$(_env_var POSTGRES_PASSWORD "")"
   PG_DB="$(_env_var POSTGRES_DB rescuegrid)"
 
-  echo "Application des migrations Alembic (avant bascule du conteneur)..."
+  mkdir -p "$PREDEPLOY_DIR"
+  DUMP_NAME="predeploy_${SHORT_SHA}_$(date +%Y%m%d_%H%M%S).dump"
+  DUMP_HOST="$PREDEPLOY_DIR/$DUMP_NAME"
+  echo "Sauvegarde PostgreSQL pré-migration → $DUMP_NAME ..."
+  if ! "$DOCKER" run --rm --network "$NETWORK" \
+        -e PGPASSWORD="$PG_PASSWORD" \
+        -v "$PREDEPLOY_DIR:/backups" \
+        --entrypoint pg_dump \
+        "$NEW_TAG" \
+        -h postgres -U "$PG_USER" -Fc -f "/backups/$DUMP_NAME" "$PG_DB"; then
+    echo "ECHEC : pg_dump pré-migration — déploiement annulé, schéma inchangé."
+    "$REPO_DIR/scripts/notify_deploy.sh" "Echec pg_dump pre-migration pour $REMOTE_COMMIT — deploiement annule."
+    exit 1
+  fi
+  if [ ! -f "$DUMP_HOST" ] || [ ! -s "$DUMP_HOST" ]; then
+    echo "ECHEC : dump pré-migration absent ou vide ($DUMP_HOST)."
+    "$REPO_DIR/scripts/notify_deploy.sh" "Dump pre-migration vide/absent pour $REMOTE_COMMIT — deploiement annule."
+    exit 1
+  fi
+  echo "Dump OK ($(wc -c < "$DUMP_HOST") octets)."
+
+  # Rotation des dumps pré-déploiement (indépendante des backups quotidiens).
+  ls -1t "$PREDEPLOY_DIR"/predeploy_*.dump 2>/dev/null \
+    | tail -n +"$((KEEP_PREDEPLOY + 1))" \
+    | while read -r old_dump; do
+        rm -f "$old_dump" || true
+      done
+
+  echo "Application des migrations Alembic (avant bascule)..."
   if ! "$DOCKER" run --rm --network "$NETWORK" --env-file .env \
         -e DATABASE_URL="postgresql://${PG_USER}:${PG_PASSWORD}@postgres:5432/${PG_DB}" \
-        "$NEW_TAG" alembic upgrade head; then
-    echo "ECHEC : migration Alembic — VERIFICATION MANUELLE URGENTE (schema potentiellement incoherent)."
-    "$REPO_DIR/scripts/notify_deploy.sh" "ECHEC migration Alembic pour $REMOTE_COMMIT — VERIFICATION URGENTE REQUISE."
+        --entrypoint alembic \
+        "$NEW_TAG" upgrade head; then
+    echo "ECHEC : migration Alembic — schéma potentiellement incohérent ; dump dispo : $DUMP_NAME"
+    "$REPO_DIR/scripts/notify_deploy.sh" "ECHEC migration Alembic pour $REMOTE_COMMIT — dump $DUMP_NAME disponible — VERIFICATION URGENTE."
     exit 1
   fi
 
-  # Sauvegarde le tag actuellement déployé pour un rollback automatique rapide
-  # si la bascule échoue ci-dessous (image seule — la migration n'est pas
-  # annulée automatiquement, voir le commentaire en tête de fichier).
   PREVIOUS_SHA="$DEPLOYED_COMMIT"
 
-  echo "Bascule du conteneur backend sur la nouvelle image..."
+  echo "Promotion $NEW_TAG → $IMAGE_REPO:latest puis bascule conteneur..."
+  "$DOCKER" tag "$NEW_TAG" "$IMAGE_REPO:latest"
   if ! "$DOCKER" compose -f "$COMPOSE_FILE" up -d backend; then
     echo "ECHEC : bascule du conteneur backend."
     "$REPO_DIR/scripts/notify_deploy.sh" "Echec bascule backend pour $REMOTE_COMMIT — verification manuelle necessaire."
     exit 1
   fi
 
-  # Readiness robuste : /ready (DB) en priorité, repli /health (liveness).
-  # D'abord via le réseau Docker, puis port hôte 8080. Retry ~2 min.
-  _health_ok() {
-    "$DOCKER" compose -f "$COMPOSE_FILE" exec -T backend curl -sf -m 8 http://127.0.0.1:8000/ready > /dev/null 2>&1 \
-      || "$DOCKER" compose -f "$COMPOSE_FILE" exec -T backend curl -sf -m 8 http://127.0.0.1:8000/health > /dev/null 2>&1 \
-      || curl -sf -m 8 http://127.0.0.1:8080/ready > /dev/null 2>&1 \
-      || curl -sf -m 8 http://127.0.0.1:8080/health > /dev/null 2>&1
+  # /ready uniquement. Fallback /health seulement si /ready renvoie 404 (vieux backend).
+  _ready_ok() {
+    local code
+    code="$("$DOCKER" compose -f "$COMPOSE_FILE" exec -T backend \
+      curl -s -o /dev/null -w "%{http_code}" -m 8 http://127.0.0.1:8000/ready 2>/dev/null || echo "000")"
+    if [ "$code" = "200" ]; then
+      return 0
+    fi
+    if [ "$code" = "404" ]; then
+      "$DOCKER" compose -f "$COMPOSE_FILE" exec -T backend \
+        curl -sf -m 8 http://127.0.0.1:8000/health > /dev/null 2>&1 && return 0
+    fi
+    code="$(curl -s -o /dev/null -w "%{http_code}" -m 8 http://127.0.0.1:8080/ready 2>/dev/null || echo "000")"
+    if [ "$code" = "200" ]; then
+      return 0
+    fi
+    if [ "$code" = "404" ]; then
+      curl -sf -m 8 http://127.0.0.1:8080/health > /dev/null 2>&1 && return 0
+    fi
+    return 1
   }
 
-  echo "Attente du démarrage puis vérification readiness (/ready, max ~120s)..."
+  echo "Attente readiness (/ready, max ~120s)..."
   HEALTH_OK=0
   for i in $(seq 1 24); do
     sleep 5
-    if _health_ok; then
+    if _ready_ok; then
       HEALTH_OK=1
       echo "Ready OK après ~$((i * 5))s."
       break
@@ -190,21 +200,21 @@ fi
       ROLLBACK_OK=0
       for j in $(seq 1 18); do
         sleep 5
-        if _health_ok; then
+        if _ready_ok; then
           ROLLBACK_OK=1
           break
         fi
       done
       if [ "$ROLLBACK_OK" -eq 1 ]; then
-        echo "Rollback réussi — backend de nouveau opérationnel avec l'ancienne image."
-        "$REPO_DIR/scripts/notify_deploy.sh" "Deploiement de $REMOTE_COMMIT en echec (healthcheck) — rollback automatique reussi vers $PREVIOUS_SHA. Migration NON annulee, verification necessaire."
+        echo "Rollback réussi — dump pré-migration : $DUMP_NAME (migration NON annulée)."
+        "$REPO_DIR/scripts/notify_deploy.sh" "Deploiement $REMOTE_COMMIT echec /ready — rollback image OK. Dump $DUMP_NAME. Migration NON annulee."
       else
         echo "ECHEC : rollback automatique lui-même en échec."
-        "$REPO_DIR/scripts/notify_deploy.sh" "ECHEC CRITIQUE : deploiement de $REMOTE_COMMIT et rollback automatique tous deux en echec — INTERVENTION MANUELLE URGENTE."
+        "$REPO_DIR/scripts/notify_deploy.sh" "ECHEC CRITIQUE : deploiement $REMOTE_COMMIT et rollback en echec — dump $DUMP_NAME — INTERVENTION URGENTE."
       fi
     else
-      echo "Pas d'image précédente disponible pour un rollback automatique."
-      "$REPO_DIR/scripts/notify_deploy.sh" "Backend indisponible apres deploiement de $REMOTE_COMMIT (pas de rollback possible) — VERIFICATION URGENTE REQUISE."
+      echo "Pas d'image précédente pour rollback."
+      "$REPO_DIR/scripts/notify_deploy.sh" "Backend indisponible apres $REMOTE_COMMIT (pas de rollback) — dump $DUMP_NAME — VERIFICATION URGENTE."
     fi
     exit 1
   fi

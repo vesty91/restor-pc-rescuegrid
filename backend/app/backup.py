@@ -1,5 +1,5 @@
 """
-backup.py — Restor-PC RescueGrid v12.5.2
+backup.py — Restor-PC RescueGrid
 ---------------------------------------
 Sauvegarde planifiée de la base de données avec rotation.
 
@@ -52,11 +52,24 @@ def is_postgres() -> bool:
 
 
 def _sqlite_db_path(base_dir: Path) -> Path | None:
-    for name in ["rescuegrid.db", "app.db"]:
-        p = base_dir / name
-        if p.exists():
-            return p
-    return None
+    """Chemin réel de la base SQLite depuis DATABASE_URL (pas seulement rescuegrid.db)."""
+    from sqlalchemy.engine.url import make_url
+
+    try:
+        url = make_url(DATABASE_URL)
+    except Exception:
+        return None
+    if url.get_backend_name() != "sqlite":
+        return None
+    db = url.database
+    if not db or db == ":memory:":
+        return None
+    source = Path(db)
+    if not source.is_absolute():
+        source = (base_dir / source).resolve()
+    else:
+        source = source.resolve()
+    return source if source.exists() else None
 
 
 def _dump_postgres(destination: Path) -> None:
