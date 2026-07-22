@@ -1,5 +1,11 @@
 # Changelog
 
+## v12.6.6 — pytest dans l'image (garde CD)
+
+- **`pytest`** embarqué dans `requirements.txt` pour que
+  `nas_auto_deploy.sh` puisse lancer la suite unitaire contre l'image
+  `:sha` avant promotion `:latest` (échec 12.6.5 : module manquant).
+
 ## v12.6.5 — Deploy NAS sûr + readiness + planning Paris
 
 - **Deploy NAS** : build image `:sha` avant tests ; `pg_dump` pré-migration

@@ -1,6 +1,6 @@
 [project]
 name = "restor-pc-rescuegrid"
-version = "12.6.5"
+version = "12.6.6"
 description = "Restor-PC RescueGrid — atelier informatique"
 requires-python = ">=3.12,<3.13"
 readme = "README.md"

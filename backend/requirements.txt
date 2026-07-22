@@ -19,3 +19,5 @@ pyotp==2.9.0
 qrcode==8.0
 tzdata==2025.2
 Pillow==11.3.0
+# Garde CD (scripts/nas_auto_deploy.sh) — pytest unitaire avant bascule :latest
+pytest==8.4.1

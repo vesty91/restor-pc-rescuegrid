@@ -1,4 +1,4 @@
-# Restor-PC RescueGrid v12.6.5
+# Restor-PC RescueGrid v12.6.6
 
 Plateforme atelier pour diagnostic PC, suivi d'interventions, clients, machines, devis, factures, rapports et envoi SMTP Infomaniak avec PDF joint.
 
