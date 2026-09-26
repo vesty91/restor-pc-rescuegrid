@@ -17,7 +17,10 @@
   3. personnalisation de startnet.cmd : detection automatique de la lettre de
      lecteur contenant RescueGrid (cle USB) et lancement de Start-RescueGrid.ps1 ;
   4. demontage/commit de boot.wim ;
-  5. (optionnel, -BuildIso) generation d'une image ISO bootable via MakeWinPEMedia.
+  5. (optionnel, -ApplyWinXShell) injection WinXShell via Apply-WinPE-WinXShell.ps1 ;
+  6. (optionnel, -BuildIso) generation d'une image ISO bootable via MakeWinPEMedia.
+     Si -BuildIso et -ApplyWinXShell sont combines, l'ISO est produite apres
+     l'injection afin qu'elle contienne le WinPE final.
 
   boot.wim est produit a l'emplacement standard <WinPERoot>\media\sources\boot.wim,
   directement reutilisable par :
@@ -38,15 +41,23 @@
 .PARAMETER BuildIso
   Genere en plus une image ISO bootable (utilisable pour graver un DVD, monter
   en machine virtuelle, ou generer une cle USB via un autre outil).
+  L'ISO est toujours generee apres -ApplyWinXShell lorsque les deux sont demandes.
 
 .PARAMETER IsoPath
   Chemin de l'ISO genere si -BuildIso (par defaut <WinPERoot>\RescueGridWinPE.iso).
+
+.PARAMETER ApplyWinXShell
+  Apres le commit des packages WinPE, lance Apply-WinPE-WinXShell.ps1 sur le
+  boot.wim produit. Doit rester avant -BuildIso.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File Build-RescueGridWinPE.ps1 -Force
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File Build-RescueGridWinPE.ps1 -Force -BuildIso
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File Build-RescueGridWinPE.ps1 -WinPERoot C:\WinPE -Arch amd64 -Force -ApplyWinXShell -BuildIso
 #>
 
 param(
@@ -59,7 +70,9 @@ param(
 
     [switch]$BuildIso,
 
-    [string]$IsoPath = ""
+    [string]$IsoPath = "",
+
+    [switch]$ApplyWinXShell
 )
 
 $ErrorActionPreference = "Stop"
@@ -167,7 +180,22 @@ if ($LASTEXITCODE -ne 0) { throw "Demontage/commit de boot.wim echoue (code $LAS
 Write-Host ""
 Write-Host "boot.wim pret : $bootWim" -ForegroundColor Green
 
-# 7. Generation ISO optionnelle
+# 7. Injection WinXShell apres le commit des packages, avant l'ISO.
+if ($ApplyWinXShell) {
+    Write-Host ""
+    Write-Host "Injection WinXShell dans boot.wim (avant generation ISO)" -ForegroundColor Cyan
+    $applyScript = Join-Path $PSScriptRoot "Apply-WinPE-WinXShell.ps1"
+    if (-not (Test-Path -LiteralPath $applyScript)) {
+        throw "Script introuvable : $applyScript"
+    }
+    & $applyScript -BootWim $bootWim
+    if (-not (Test-Path -LiteralPath $bootWim)) {
+        throw "boot.wim absent apres injection WinXShell : $bootWim"
+    }
+    Write-Host "WinXShell injecte : $bootWim" -ForegroundColor Green
+}
+
+# 8. Generation ISO optionnelle (apres WinXShell si les deux sont demandes)
 if ($BuildIso) {
     if (-not $IsoPath) { $IsoPath = Join-Path $WinPERoot "RescueGridWinPE.iso" }
     Write-Host ""
@@ -180,7 +208,11 @@ if ($BuildIso) {
 
 Write-Host ""
 Write-Host "=== Termine ===" -ForegroundColor Green
-Write-Host "Ensuite injecter le bureau Strelec maison :" -ForegroundColor Cyan
-Write-Host "  Apply-WinPE-WinXShell.ps1 -BootWim $bootWim" -ForegroundColor White
-Write-Host "  Create-RescueGridUSB.ps1 -TargetDrive E: -WinPEBasePath $WinPERoot ..." -ForegroundColor White
+if ($ApplyWinXShell) {
+    Write-Host "Bureau WinXShell deja present dans boot.wim." -ForegroundColor Cyan
+} else {
+    Write-Host "Ensuite injecter le bureau Strelec maison :" -ForegroundColor Cyan
+    Write-Host "  Apply-WinPE-WinXShell.ps1 -BootWim $bootWim" -ForegroundColor White
+}
+Write-Host "  Create-RescueGridUSB.ps1 -TargetDrive <RESTOR-TOOLS> -WinPEBasePath $WinPERoot ..." -ForegroundColor White
 Write-Host "  Setup-PXERescueServer.ps1  (reprend automatiquement C:\WinPE\media\sources\boot.wim)" -ForegroundColor White
